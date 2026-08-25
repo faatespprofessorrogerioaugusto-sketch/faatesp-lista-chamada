@@ -25,26 +25,7 @@ export default function App() {
   const [students, setStudents] = useState<Student[]>([]);
   const [classes, setClasses] = useState<ClassSession[]>([]);
   const [grades, setGrades] = useState<Record<string, StudentGrade>>({});
-  const [currentUser, setCurrentUser] = useState<UserSession | null>(() => {
-    try {
-      const savedUser = localStorage.getItem('consultoria_user_v1');
-      if (savedUser) {
-        const parsed = JSON.parse(savedUser);
-        if (parsed.role === 'Professor' && (parsed.name.includes('Marinês') || parsed.name === 'ROGÉRIO AUGUSTO FERNANDES' || parsed.name === 'Prof. Rogério Augusto / Profª. Marinês Borba')) {
-          parsed.name = 'Rogério Augusto - Mister Roger';
-        }
-        return parsed;
-      }
-    } catch (e) {
-      console.error('Error reading user session:', e);
-    }
-    // Default session: Direct entry for anyone with link
-    return {
-      name: 'Rogério Augusto - Mister Roger',
-      role: 'Professor',
-    };
-  });
-  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState<UserSession | null>(null);
   const [activeTab, setActiveTab] = useState<AppTab>('dashboard');
 
   // Navigation helpers
@@ -63,24 +44,6 @@ export default function App() {
     setStudents(loadedSt);
     setClasses(loadedCl);
     setGrades(loadedGr);
-
-    // Load persisted user session if exists
-    try {
-      const savedUser = localStorage.getItem('consultoria_user_v1');
-      if (savedUser) {
-        const parsedUser: UserSession = JSON.parse(savedUser);
-        if (parsedUser.role === 'Professor' && (parsedUser.name.includes('Marinês') || parsedUser.name === 'ROGÉRIO AUGUSTO FERNANDES' || parsedUser.name === 'Prof. Rogério Augusto / Profª. Marinês Borba')) {
-          parsedUser.name = 'Rogério Augusto - Mister Roger';
-          localStorage.setItem('consultoria_user_v1', JSON.stringify(parsedUser));
-        }
-        setCurrentUser(parsedUser);
-        if (parsedUser.role === 'Aluno') {
-          setActiveTab('roll-call');
-        }
-      }
-    } catch (e) {
-      console.error('Error loading user session:', e);
-    }
   }, []);
 
   // Save changes
