@@ -128,13 +128,13 @@ export const LoginModal: React.FC<LoginModalProps> = ({ students, onLogin }) => 
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4">
-      <div className="bg-slate-900 rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl border border-slate-800 space-y-6 text-slate-100 animate-scale-up">
+      <div className="bg-slate-900 rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-slate-800 space-y-6 text-slate-100 animate-scale-up">
         {/* Top Header */}
         <div className="text-center space-y-2">
           <div className="inline-flex items-center justify-center bg-indigo-600/20 border border-indigo-500/30 text-indigo-400 p-3.5 rounded-2xl mb-1 shadow-inner">
             <GraduationCap className="w-8 h-8" />
           </div>
-          <h2 className="text-2xl font-black text-white tracking-tight">
+          <h2 className="text-lg sm:text-xl font-black text-white tracking-tight whitespace-nowrap">
             Disciplina: Consultoria Organizacional
           </h2>
           <p className="text-xs text-slate-400 font-medium">
