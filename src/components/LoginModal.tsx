@@ -162,26 +162,25 @@ export const LoginModal: React.FC<LoginModalProps> = ({ students, onLogin }) => 
               Nome Completo <span className="text-rose-400">*</span>
             </label>
             <input
-              type="text"
+              type="search"
               id="login-fullname-input"
-              name="nome_completo_custom"
+              name={`user_name_${Date.now()}`}
               required
               autoFocus
-              autoComplete="new-password"
+              autoComplete="one-time-code"
               autoCorrect="off"
               autoCapitalize="characters"
               spellCheck={false}
               data-lpignore="true"
               data-1p-ignore="true"
               data-form-type="other"
+              data-bwignore="true"
               value={fullName}
               onChange={handleNameChange}
+              onFocus={(e) => e.target.setAttribute('autocomplete', 'one-time-code')}
               placeholder="DIGITE SEU NOME COMPLETO..."
-              className="w-full px-4 py-3 bg-slate-800 border border-slate-700 text-slate-100 font-bold rounded-xl focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 uppercase placeholder:text-slate-500 placeholder:normal-case placeholder:font-normal text-sm transition-all"
+              className="w-full px-4 py-3 bg-slate-800 border border-slate-700 text-slate-100 font-bold rounded-xl focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 uppercase placeholder:text-slate-500 placeholder:normal-case placeholder:font-normal text-sm transition-all [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden"
             />
-            <span className="text-[11px] text-slate-500 mt-1 block">
-              O texto será automaticamente convertido para letras maiúsculas.
-            </span>
           </div>
 
           {/* E-mail (Obrigatório para o Aluno) */}
@@ -190,26 +189,25 @@ export const LoginModal: React.FC<LoginModalProps> = ({ students, onLogin }) => 
               E-mail {role === 'Aluno' && <span className="text-rose-400">*</span>}
             </label>
             <input
-              type="text"
+              type="search"
               id="login-email-input"
-              name="email_custom_field"
+              name={`user_contact_${Date.now()}`}
               inputMode="email"
               required={role === 'Aluno'}
-              autoComplete="new-password"
+              autoComplete="one-time-code"
               autoCorrect="off"
               autoCapitalize="none"
               spellCheck={false}
               data-lpignore="true"
               data-1p-ignore="true"
               data-form-type="other"
+              data-bwignore="true"
               value={email}
               onChange={handleEmailChange}
+              onFocus={(e) => e.target.setAttribute('autocomplete', 'one-time-code')}
               placeholder="seu.email@exemplo.com"
-              className="w-full px-4 py-3 bg-slate-800 border border-slate-700 text-slate-100 font-medium rounded-xl focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 lowercase placeholder:text-slate-500 placeholder:normal-case text-sm transition-all"
+              className="w-full px-4 py-3 bg-slate-800 border border-slate-700 text-slate-100 font-medium rounded-xl focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 lowercase placeholder:text-slate-500 placeholder:normal-case text-sm transition-all [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden"
             />
-            <span className="text-[11px] text-slate-500 mt-1 block">
-              O e-mail será forçado automaticamente para letras minúsculas.
-            </span>
           </div>
 
           {/* Tipo de Usuário (Perfil) */}
