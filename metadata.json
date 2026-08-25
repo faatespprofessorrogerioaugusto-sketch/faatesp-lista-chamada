@@ -1,0 +1,6 @@
+{
+  "name": "Chamada Consultoria Organizacional",
+  "description": "Sistema de registro, controle de frequência e boletim de notas com cálculo automático ponderado para o curso de Consultoria Organizacional.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
