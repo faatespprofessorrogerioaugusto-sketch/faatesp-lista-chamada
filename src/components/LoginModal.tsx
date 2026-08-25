@@ -151,7 +151,11 @@ export const LoginModal: React.FC<LoginModalProps> = ({ students, onLogin }) => 
         )}
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form onSubmit={handleSubmit} className="space-y-5" autoComplete="off" autoCapitalize="off">
+          {/* Hidden inputs to capture aggressive browser autofill traps */}
+          <input type="text" style={{ display: 'none' }} tabIndex={-1} aria-hidden="true" />
+          <input type="password" style={{ display: 'none' }} tabIndex={-1} aria-hidden="true" />
+
           {/* Nome Completo */}
           <div>
             <label htmlFor="login-fullname-input" className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
@@ -160,8 +164,16 @@ export const LoginModal: React.FC<LoginModalProps> = ({ students, onLogin }) => 
             <input
               type="text"
               id="login-fullname-input"
+              name="nome_completo_custom"
               required
               autoFocus
+              autoComplete="new-password"
+              autoCorrect="off"
+              autoCapitalize="characters"
+              spellCheck={false}
+              data-lpignore="true"
+              data-1p-ignore="true"
+              data-form-type="other"
               value={fullName}
               onChange={handleNameChange}
               placeholder="DIGITE SEU NOME COMPLETO..."
@@ -178,9 +190,18 @@ export const LoginModal: React.FC<LoginModalProps> = ({ students, onLogin }) => 
               E-mail {role === 'Aluno' && <span className="text-rose-400">*</span>}
             </label>
             <input
-              type="email"
+              type="text"
               id="login-email-input"
+              name="email_custom_field"
+              inputMode="email"
               required={role === 'Aluno'}
+              autoComplete="new-password"
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              data-lpignore="true"
+              data-1p-ignore="true"
+              data-form-type="other"
               value={email}
               onChange={handleEmailChange}
               placeholder="seu.email@exemplo.com"

@@ -145,7 +145,7 @@ export const StudentManager: React.FC<StudentManagerProps> = ({
               {editingStudent ? 'Editar Aluno' : 'Cadastrar Novo Aluno'}
             </h3>
 
-            <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+            <form onSubmit={handleSubmit} className="space-y-4 text-xs" autoComplete="off">
               <div>
                 <label className="block font-semibold text-slate-300 mb-1">
                   Nome Completo <span className="text-rose-400">*</span>
@@ -153,6 +153,9 @@ export const StudentManager: React.FC<StudentManagerProps> = ({
                 <input
                   type="text"
                   required
+                  autoComplete="off"
+                  spellCheck={false}
+                  data-lpignore="true"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Ex: Roberto Carlos da Silva"
@@ -164,6 +167,9 @@ export const StudentManager: React.FC<StudentManagerProps> = ({
                 <label className="block font-semibold text-slate-300 mb-1">Número de Matrícula</label>
                 <input
                   type="text"
+                  autoComplete="off"
+                  spellCheck={false}
+                  data-lpignore="true"
                   value={registrationId}
                   onChange={(e) => setRegistrationId(e.target.value)}
                   placeholder="Ex: 2026011"
@@ -175,6 +181,9 @@ export const StudentManager: React.FC<StudentManagerProps> = ({
                 <label className="block font-semibold text-slate-300 mb-1">Endereço de E-mail</label>
                 <input
                   type="email"
+                  autoComplete="off"
+                  spellCheck={false}
+                  data-lpignore="true"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="aluno@exemplo.com.br"
