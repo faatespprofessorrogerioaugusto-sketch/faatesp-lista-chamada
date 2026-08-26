@@ -1,11 +1,49 @@
-import { Student, ClassSession, StudentStats, CourseOverviewStats, StudentGrade, CalculatedStudentGrade } from '../types';
+import { Student, ClassSession, StudentStats, CourseOverviewStats, StudentGrade, CalculatedStudentGrade, StudentLoginRecord } from '../types';
 import { INITIAL_STUDENTS, INITIAL_CLASSES } from '../data/initialData';
 
 const STORAGE_KEYS = {
   STUDENTS: 'consultoria_students_v7_clean',
   CLASSES: 'consultoria_classes_v7_clean',
   GRADES: 'consultoria_grades_v1',
+  STUDENT_LOGINS: 'consultoria_student_logins_v1',
 };
+
+export const loadStudentLogins = (): Record<string, StudentLoginRecord> => {
+  try {
+    const data = localStorage.getItem(STORAGE_KEYS.STUDENT_LOGINS);
+    if (data) {
+      const parsed = JSON.parse(data);
+      if (typeof parsed === 'object' && parsed !== null) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.error('Error loading student logins from localStorage:', e);
+  }
+  return {};
+};
+
+export const recordStudentLogin = (studentId: string, studentName: string): Record<string, StudentLoginRecord> => {
+  const current = loadStudentLogins();
+  const now = new Date();
+  const loginTime = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const date = now.toISOString().slice(0, 10);
+
+  current[studentId] = {
+    studentId,
+    studentName,
+    loginTime,
+    date,
+  };
+
+  try {
+    localStorage.setItem(STORAGE_KEYS.STUDENT_LOGINS, JSON.stringify(current));
+  } catch (e) {
+    console.error('Error saving student login record:', e);
+  }
+  return current;
+};
+
 
 export const loadStudents = (): Student[] => {
   try {

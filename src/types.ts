@@ -93,3 +93,11 @@ export interface CalculatedStudentGrade {
   isComplete: boolean;
 }
 
+export interface StudentLoginRecord {
+  studentId: string;
+  studentName: string;
+  loginTime: string;
+  date: string;
+}
+
+

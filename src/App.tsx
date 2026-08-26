@@ -8,6 +8,7 @@ import {
   loadGrades,
   saveGrades,
   resetToDefaultData,
+  recordStudentLogin,
 } from './utils/storage';
 import { exportToExcel } from './utils/excelUtils';
 import { Navbar } from './components/Navbar';
@@ -75,6 +76,31 @@ export default function App() {
     }
 
     if (session.role === 'Aluno') {
+      if (session.studentId) {
+        recordStudentLogin(session.studentId, session.name);
+
+        // Automatically ensure the logged in student is marked as present in latest class
+        if (classes.length > 0) {
+          const sorted = [...classes].sort((a, b) => b.classNumber - a.classNumber);
+          const latestClass = sorted[0];
+          if (latestClass && latestClass.records[session.studentId] !== 'present') {
+            const updatedClasses = classes.map((c) => {
+              if (c.id === latestClass.id) {
+                return {
+                  ...c,
+                  records: {
+                    ...c.records,
+                    [session.studentId!]: 'present' as AttendanceStatus,
+                  },
+                  updatedAt: new Date().toISOString(),
+                };
+              }
+              return c;
+            });
+            updateClasses(updatedClasses);
+          }
+        }
+      }
       setActiveTab('roll-call');
     } else {
       setActiveTab('dashboard');

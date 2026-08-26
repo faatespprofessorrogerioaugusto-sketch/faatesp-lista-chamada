@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Student, ClassSession, AttendanceStatus } from '../types';
-import { CheckCircle2, XCircle, AlertCircle, Save, Calendar, BookOpen, User, Sparkles, Clock, Check, PlusCircle, Layers } from 'lucide-react';
+import { Student, ClassSession, AttendanceStatus, StudentLoginRecord } from '../types';
+import { loadStudentLogins } from '../utils/storage';
+import { CheckCircle2, XCircle, AlertCircle, Save, Calendar, BookOpen, User, Sparkles, Clock, Check, PlusCircle, Layers, Users, Zap } from 'lucide-react';
 
 interface ClassRollCallProps {
   students: Student[];
@@ -53,11 +54,21 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
   const [records, setRecords] = useState<Record<string, AttendanceStatus>>({});
   const [recordNotes, setRecordNotes] = useState<Record<string, string>>({});
 
+  // Student Logins Tracking & Confrontation
+  const [studentLogins, setStudentLogins] = useState<Record<string, StudentLoginRecord>>({});
+  const [confrontFeedback, setConfrontFeedback] = useState<string | null>(null);
+
   // Save State & Feedback
   const [isSaving, setIsSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
+
+  // Load student logins on mount or when active class changes
+  useEffect(() => {
+    const logins = loadStudentLogins();
+    setStudentLogins(logins);
+  }, [selectedClassId]);
 
   // Calculate 90% required presence minutes dynamically
   const minRequiredMinutes = Math.round((durationMinutes * 90) / 100);
@@ -89,6 +100,9 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
 
   // Load session data whenever selectedClassId or sortedClasses change
   useEffect(() => {
+    const currentLogins = loadStudentLogins();
+    setStudentLogins(currentLogins);
+
     if (selectedClassId === 'new') {
       // Setup clean form for the next class (e.g. Aula #2)
       setClassNumber(nextClassNum);
@@ -100,10 +114,11 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
       setDescription(`Registro de presença da Aula #${nextClassNum} de Consultoria Organizacional.`);
       setInstructor('Professor Rogério Augusto Fernandes');
 
-      // Initialize all students as present
+      // Confront registered students with logins:
+      // Students who logged in -> 'present', Students who didn't log in -> 'absent'
       const initialRecs: Record<string, AttendanceStatus> = {};
       students.forEach((s) => {
-        initialRecs[s.id] = 'present';
+        initialRecs[s.id] = currentLogins[s.id] ? 'present' : 'absent';
       });
       setRecords(initialRecs);
       setRecordNotes({});
@@ -126,7 +141,8 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
       const currentRecs = { ...(targetClass.records || {}) };
       students.forEach((s) => {
         if (!currentRecs[s.id]) {
-          currentRecs[s.id] = 'present';
+          // If no record exists yet, check if student logged in
+          currentRecs[s.id] = currentLogins[s.id] ? 'present' : 'absent';
         }
       });
       setRecords(currentRecs);
@@ -173,6 +189,34 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
       newRecs[s.id] = status;
     });
     setRecords(newRecs);
+  };
+
+  // Confrontation: Cross-reference registered students with system logins
+  const handleConfrontLogins = () => {
+    const currentLogins = loadStudentLogins();
+    setStudentLogins(currentLogins);
+    const newRecs: Record<string, AttendanceStatus> = {};
+    let loggedInCount = 0;
+    let absentCountCalc = 0;
+
+    students.forEach((s) => {
+      if (currentLogins[s.id]) {
+        newRecs[s.id] = 'present';
+        loggedInCount++;
+      } else {
+        newRecs[s.id] = 'absent';
+        absentCountCalc++;
+      }
+    });
+
+    setRecords(newRecs);
+    setConfrontFeedback(
+      `Confronto realizado com sucesso! ${loggedInCount} aluno(s) com login marcados como Presentes e ${absentCountCalc} aluno(s) sem login definidos automaticamente como Ausentes.`
+    );
+
+    setTimeout(() => {
+      setConfrontFeedback(null);
+    }, 6000);
   };
 
   // Calculate live counts
@@ -619,13 +663,25 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
             </div>
           </div>
 
-          {/* Quick Mark All Buttons */}
-          <div className="flex items-center gap-2 w-full lg:w-auto justify-end">
+          {/* Quick Mark & Confrontation Buttons */}
+          <div className="flex items-center gap-2 w-full lg:w-auto justify-end flex-wrap">
+            {/* CONFRONTATION BUTTON */}
+            <button
+              type="button"
+              onClick={handleConfrontLogins}
+              id="confront-logins-btn"
+              className="px-3.5 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl transition-all shadow-md shadow-indigo-600/30 flex items-center gap-1.5 cursor-pointer"
+              title="Confrontar alunos com o login: alunos com login ficam presentes e quem não entrou fica ausente"
+            >
+              <Zap className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
+              <span>Confrontar Logins (Ausentes Automáticos)</span>
+            </button>
+
             <button
               type="button"
               onClick={() => handleMarkAll('present')}
               id="mark-all-present-btn"
-              className="px-3 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors cursor-pointer flex items-center gap-1.5"
+              className="px-3 py-2 text-xs font-semibold bg-emerald-700/80 hover:bg-emerald-600 text-white rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
             >
               <Check className="w-3.5 h-3.5" />
               <span>Todos Presentes</span>
@@ -635,7 +691,7 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
               type="button"
               onClick={() => handleMarkAll('absent')}
               id="mark-all-absent-btn"
-              className="px-3 py-1.5 text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white rounded-lg transition-colors cursor-pointer flex items-center gap-1.5"
+              className="px-3 py-2 text-xs font-semibold bg-rose-700/80 hover:bg-rose-600 text-white rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
             >
               <XCircle className="w-3.5 h-3.5" />
               <span>Todos Ausentes</span>
@@ -643,10 +699,18 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
           </div>
         </div>
 
+        {/* Confrontation Feedback Notification */}
+        {confrontFeedback && (
+          <div className="p-4 bg-indigo-950/90 border border-indigo-700 rounded-2xl text-indigo-200 text-sm font-semibold flex items-center gap-3 animate-fade-in shadow-lg">
+            <Zap className="w-5 h-5 text-amber-400 fill-amber-400 shrink-0" />
+            <span>{confrontFeedback}</span>
+          </div>
+        )}
+
         {/* Student List Roll Call Table */}
         <div className="bg-slate-900/80 rounded-2xl border border-slate-800 shadow-xs overflow-hidden">
           <div className="p-4 bg-slate-800/80 border-b border-slate-700/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <User className="w-4 h-4 text-indigo-400" />
               <h3 className="font-bold text-slate-100 text-sm tracking-tight">
                 Lista de Alunos - Marcação de Presença
@@ -655,7 +719,13 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
                 Ordem Alfabética (A-Z)
               </span>
             </div>
-            <span className="text-xs text-slate-400">Total: {sortedStudents.length} alunos listados de A a Z</span>
+            <div className="flex items-center gap-2 text-xs text-slate-400">
+              <span className="inline-flex items-center gap-1 bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20 text-[11px]">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                {Object.keys(studentLogins).length} com login
+              </span>
+              <span>Total: {sortedStudents.length} alunos</span>
+            </div>
           </div>
 
           <div className="divide-y divide-slate-800/80">
@@ -667,6 +737,8 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
               sortedStudents.map((student, idx) => {
                 const currentStatus = records[student.id] || 'present';
                 const currentNote = recordNotes[student.id] || '';
+                const isLogged = !!studentLogins[student.id];
+                const loginData = studentLogins[student.id];
 
                 return (
                   <div
@@ -685,7 +757,20 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
                         {idx + 1}.
                       </span>
                       <div>
-                        <div className="font-bold text-slate-100 text-sm">{student.name}</div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-bold text-slate-100 text-sm">{student.name}</span>
+                          {isLogged ? (
+                            <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[10px] font-semibold px-2 py-0.5 rounded-md flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                              Fez Login {loginData?.loginTime ? `(${loginData.loginTime})` : ''}
+                            </span>
+                          ) : (
+                            <span className="bg-rose-500/10 text-rose-400 border border-rose-500/30 text-[10px] font-semibold px-2 py-0.5 rounded-md flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                              Sem Login (Ausente)
+                            </span>
+                          )}
+                        </div>
                         <div className="text-xs text-slate-400 font-mono">
                           {student.registrationId ? `Matrícula: ${student.registrationId}` : 'Sem matrícula'}
                         </div>
