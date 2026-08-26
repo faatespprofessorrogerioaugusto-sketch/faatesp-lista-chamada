@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Student, ClassSession } from '../types';
 import { getStudentStats } from '../utils/storage';
+import { formatToTitleCase } from '../utils/formatters';
 import { Users, UserPlus, Edit3, Trash2, Search, Upload, Mail, Hash, AlertTriangle, CheckCircle2 } from 'lucide-react';
 
 interface StudentManagerProps {
@@ -63,18 +64,19 @@ export const StudentManager: React.FC<StudentManagerProps> = ({
     e.preventDefault();
     if (!name.trim()) return;
 
+    const formattedName = formatToTitleCase(name.trim());
+
     if (editingStudent) {
       onEditStudent({
         ...editingStudent,
-        name: name.trim(),
+        name: formattedName,
         registrationId: registrationId.trim(),
-        email: email.trim(),
       });
     } else {
       onAddStudent({
-        name: name.trim(),
+        name: formattedName,
         registrationId: registrationId.trim(),
-        email: email.trim(),
+        email: '',
       });
     }
 
@@ -157,8 +159,8 @@ export const StudentManager: React.FC<StudentManagerProps> = ({
                   spellCheck={false}
                   data-lpignore="true"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Ex: Roberto Carlos da Silva"
+                  onChange={(e) => setName(formatToTitleCase(e.target.value))}
+                  placeholder="Ex: Neymar da Silva Júnior"
                   className="w-full px-3 py-2 bg-slate-800 border border-slate-700 text-slate-100 rounded-lg focus:ring-2 focus:ring-indigo-500 font-medium placeholder-slate-500"
                 />
               </div>
@@ -174,20 +176,6 @@ export const StudentManager: React.FC<StudentManagerProps> = ({
                   onChange={(e) => setRegistrationId(e.target.value)}
                   placeholder="Ex: 2026011"
                   className="w-full px-3 py-2 bg-slate-800 border border-slate-700 text-slate-100 rounded-lg focus:ring-2 focus:ring-indigo-500 font-mono placeholder-slate-500"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-300 mb-1">Endereço de E-mail</label>
-                <input
-                  type="email"
-                  autoComplete="off"
-                  spellCheck={false}
-                  data-lpignore="true"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="aluno@exemplo.com.br"
-                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 text-slate-100 rounded-lg focus:ring-2 focus:ring-indigo-500 placeholder-slate-500"
                 />
               </div>
 

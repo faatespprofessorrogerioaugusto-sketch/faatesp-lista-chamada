@@ -5,6 +5,7 @@ import { CheckCircle2, Calendar, BookOpen, Clock, User, Award, Check } from 'luc
 interface StudentRollCallProps {
   studentName: string;
   studentId: string;
+  studentRegistrationId?: string;
   classes: ClassSession[];
   onUpdateAttendance: (classId: string, studentId: string, status: AttendanceStatus) => void;
 }
@@ -12,6 +13,7 @@ interface StudentRollCallProps {
 export const StudentRollCall: React.FC<StudentRollCallProps> = ({
   studentName,
   studentId,
+  studentRegistrationId,
   classes,
   onUpdateAttendance,
 }) => {
@@ -49,10 +51,15 @@ export const StudentRollCall: React.FC<StudentRollCallProps> = ({
       {/* Top Banner */}
       <div className="bg-slate-900/80 p-6 rounded-2xl border border-slate-800 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-xs font-bold px-2.5 py-0.5 rounded-md uppercase tracking-wider">
               Área do Aluno
             </span>
+            {studentRegistrationId && (
+              <span className="bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 text-xs font-mono font-bold px-2.5 py-0.5 rounded-md">
+                Matrícula: {studentRegistrationId}
+              </span>
+            )}
             <span className="text-slate-600">•</span>
             <span className="text-xs text-slate-400 font-medium">Disciplina: Consultoria Organizacional</span>
           </div>

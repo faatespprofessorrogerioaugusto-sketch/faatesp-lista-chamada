@@ -238,6 +238,10 @@ export default function App() {
               <StudentRollCall
                 studentName={currentUser.name}
                 studentId={currentUser.studentId || ''}
+                studentRegistrationId={
+                  students.find((s) => s.id === currentUser.studentId)?.registrationId ||
+                  currentUser.registrationId
+                }
                 classes={classes}
                 onUpdateAttendance={handleUpdateRecordStatus}
               />

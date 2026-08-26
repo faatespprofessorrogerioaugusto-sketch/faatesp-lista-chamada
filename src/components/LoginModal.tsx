@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { UserSession, Student, UserRole } from '../types';
 import { LogIn, GraduationCap, ShieldAlert, UserCheck, AlertCircle } from 'lucide-react';
+import { formatToTitleCase, normalizeString } from '../utils/formatters';
 
 interface LoginModalProps {
   students: Student[];
@@ -14,7 +15,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({ students, onLogin }) => 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFullName(e.target.value.toUpperCase());
+    const formatted = formatToTitleCase(e.target.value);
+    setFullName(formatted);
     setErrorMessage(null);
   };
 
@@ -27,15 +29,15 @@ export const LoginModal: React.FC<LoginModalProps> = ({ students, onLogin }) => 
     e.preventDefault();
     setErrorMessage(null);
 
-    const trimmedName = fullName.trim().toUpperCase();
+    const formattedName = formatToTitleCase(fullName.trim());
     const trimmedEmail = email.trim().toLowerCase();
 
-    if (!trimmedName) {
+    if (!formattedName) {
       setErrorMessage('Por favor, informe seu Nome Completo.');
       return;
     }
 
-    if (trimmedName.length < 3) {
+    if (formattedName.length < 3) {
       setErrorMessage('O Nome Completo deve ter pelo menos 3 caracteres.');
       return;
     }
@@ -54,14 +56,9 @@ export const LoginModal: React.FC<LoginModalProps> = ({ students, onLogin }) => 
       }
     }
 
-    // Normalize full name for professor check
-    const normalizedFullName = trimmedName
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-
-    const isAuthorizedProfessor = normalizedFullName === 'ROGERIO AUGUSTO FERNANDES';
+    // Normalize name for professor comparison
+    const normalizedFullName = normalizeString(formattedName);
+    const isAuthorizedProfessor = normalizedFullName === 'rogerio augusto fernandes';
 
     // Role validation check
     if (role === 'Professor') {
@@ -87,20 +84,23 @@ export const LoginModal: React.FC<LoginModalProps> = ({ students, onLogin }) => 
         return;
       }
 
-      // Check if student exists in roster (case-insensitive name match)
-      let existingStudent = students.find(
-        (s) => s.name.trim().toUpperCase() === trimmedName
-      );
+      // Check if student exists in roster (from Gestão de Alunos)
+      // Matches by normalized name OR exact email match
+      let existingStudent = students.find((s) => {
+        const nameMatch = normalizeString(s.name) === normalizedFullName;
+        const emailMatch = s.email && s.email.trim().toLowerCase() === trimmedEmail;
+        return nameMatch || emailMatch;
+      });
 
       let currentStudents = [...students];
 
-      // If student is not in the system, automatically register them!
+      // If student is not in the system, automatically register them with registrationId!
       if (!existingStudent) {
         const nextNumber = students.length + 1;
         const autoRegistrationId = `2026${String(nextNumber).padStart(3, '0')}`;
         const newStudent: Student = {
           id: `st-${Date.now()}`,
-          name: trimmedName,
+          name: formattedName,
           email: trimmedEmail,
           registrationId: autoRegistrationId,
           createdAt: new Date().toISOString().slice(0, 10),
@@ -108,18 +108,36 @@ export const LoginModal: React.FC<LoginModalProps> = ({ students, onLogin }) => 
         currentStudents.push(newStudent);
         existingStudent = newStudent;
       } else {
-        // If student exists but didn't have email or email changed, update it
-        if (existingStudent.email !== trimmedEmail) {
+        // If student exists in Gestão de Alunos:
+        // 1. If email wasn't recorded or changed, update email
+        // 2. If student has registrationId, capture it seamlessly
+        let shouldUpdate = false;
+        let updatedRecord = { ...existingStudent };
+
+        if (!existingStudent.email || existingStudent.email !== trimmedEmail) {
+          updatedRecord.email = trimmedEmail;
+          shouldUpdate = true;
+        }
+
+        // If the name in Gestão de Alunos wasn't title-cased, format it cleanly
+        if (existingStudent.name !== formattedName && normalizeString(existingStudent.name) === normalizedFullName) {
+          updatedRecord.name = formattedName;
+          shouldUpdate = true;
+        }
+
+        if (shouldUpdate) {
           currentStudents = currentStudents.map((s) =>
-            s.id === existingStudent?.id ? { ...s, email: trimmedEmail } : s
+            s.id === existingStudent?.id ? updatedRecord : s
           );
+          existingStudent = updatedRecord;
         }
       }
 
       const session: UserSession = {
-        name: trimmedName,
+        name: existingStudent.name || formattedName,
         role: 'Aluno',
         studentId: existingStudent.id,
+        registrationId: existingStudent.registrationId,
       };
 
       onLogin(session, currentStudents);
@@ -169,7 +187,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ students, onLogin }) => 
               autoFocus
               autoComplete="one-time-code"
               autoCorrect="off"
-              autoCapitalize="characters"
+              autoCapitalize="words"
               spellCheck={false}
               data-lpignore="true"
               data-1p-ignore="true"
@@ -178,8 +196,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({ students, onLogin }) => 
               value={fullName}
               onChange={handleNameChange}
               onFocus={(e) => e.target.setAttribute('autocomplete', 'one-time-code')}
-              placeholder="DIGITE SEU NOME COMPLETO..."
-              className="w-full px-4 py-3 bg-slate-800 border border-slate-700 text-slate-100 font-bold rounded-xl focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 uppercase placeholder:text-slate-500 placeholder:normal-case placeholder:font-normal text-sm transition-all [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden"
+              placeholder="Ex: Neymar da Silva Júnior"
+              className="w-full px-4 py-3 bg-slate-800 border border-slate-700 text-slate-100 font-bold rounded-xl focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 placeholder:text-slate-500 placeholder:normal-case placeholder:font-normal text-sm transition-all [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden"
             />
           </div>
 
@@ -262,3 +280,4 @@ export const LoginModal: React.FC<LoginModalProps> = ({ students, onLogin }) => 
     </div>
   );
 };
+

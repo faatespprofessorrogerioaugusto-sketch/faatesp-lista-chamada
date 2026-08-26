@@ -20,6 +20,11 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
   // Sort classes by classNumber
   const sortedClasses = [...existingClasses].sort((a, b) => a.classNumber - b.classNumber);
 
+  // Automatically sort students in alphabetical order (A-Z)
+  const sortedStudents = [...students].sort((a, b) =>
+    a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' })
+  );
+
   // Active selected session ID in view ('new' or specific class id)
   const [selectedClassId, setSelectedClassId] = useState<string>(() => {
     if (editingClassId) return editingClassId;
@@ -48,8 +53,10 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
   const [records, setRecords] = useState<Record<string, AttendanceStatus>>({});
   const [recordNotes, setRecordNotes] = useState<Record<string, string>>({});
 
-  // Success Feedback
+  // Save State & Feedback
+  const [isSaving, setIsSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
 
   // Calculate 90% required presence minutes dynamically
@@ -181,6 +188,8 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
       return;
     }
 
+    setIsSaving(true);
+
     const existingClass = sortedClasses.find((c) => c.id === selectedClassId || c.classNumber === Number(classNumber));
     const targetId = existingClass ? existingClass.id : (selectedClassId !== 'new' ? selectedClassId : `class-${Date.now()}`);
 
@@ -204,11 +213,16 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
 
     onSaveClass(newSession);
     setSelectedClassId(targetId);
+    setIsSaving(false);
     setSavedSuccess(true);
+    setSaveSuccessMessage(
+      `Chamada da Aula #${classNumber} salva com sucesso! (${formatDateDisplay(date)} • ${presentCount} Presentes, ${absentCount} Ausentes, ${justifiedCount} Justificados)`
+    );
 
     setTimeout(() => {
       setSavedSuccess(false);
-    }, 4000);
+      setSaveSuccessMessage(null);
+    }, 5000);
   };
 
   return (
@@ -267,11 +281,30 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
             type="submit"
             form="class-rollcall-form"
             id="header-save-rollcall-btn"
-            className="px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-xl transition-all shadow-md shadow-emerald-600/30 flex items-center gap-2 cursor-pointer"
+            disabled={isSaving}
+            className={`px-4 py-2 text-xs font-bold rounded-xl transition-all shadow-md flex items-center gap-2 cursor-pointer ${
+              savedSuccess
+                ? 'bg-emerald-500 text-white shadow-emerald-500/30'
+                : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30'
+            }`}
             title="Salvar todas as alterações de chamada e horários da aula"
           >
-            <Save className="w-4 h-4" />
-            <span>Salvar Dados Alterados</span>
+            {isSaving ? (
+              <>
+                <Clock className="w-3.5 h-3.5 animate-spin" />
+                <span>Salvando...</span>
+              </>
+            ) : savedSuccess ? (
+              <>
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Salvo com Sucesso!</span>
+              </>
+            ) : (
+              <>
+                <Save className="w-3.5 h-3.5" />
+                <span>Salvar Dados Alterados</span>
+              </>
+            )}
           </button>
         </div>
       </div>
@@ -612,21 +645,26 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
 
         {/* Student List Roll Call Table */}
         <div className="bg-slate-900/80 rounded-2xl border border-slate-800 shadow-xs overflow-hidden">
-          <div className="p-4 bg-slate-800/80 border-b border-slate-700/80 flex items-center justify-between">
-            <h3 className="font-bold text-slate-100 text-sm tracking-tight flex items-center gap-2">
+          <div className="p-4 bg-slate-800/80 border-b border-slate-700/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
               <User className="w-4 h-4 text-indigo-400" />
-              <span>Lista de Alunos - Marcação de Presença</span>
-            </h3>
-            <span className="text-xs text-slate-400">Selecione o status de cada aluno abaixo</span>
+              <h3 className="font-bold text-slate-100 text-sm tracking-tight">
+                Lista de Alunos - Marcação de Presença
+              </h3>
+              <span className="bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 text-[11px] font-semibold px-2 py-0.5 rounded-md">
+                Ordem Alfabética (A-Z)
+              </span>
+            </div>
+            <span className="text-xs text-slate-400">Total: {sortedStudents.length} alunos listados de A a Z</span>
           </div>
 
           <div className="divide-y divide-slate-800/80">
-            {students.length === 0 ? (
+            {sortedStudents.length === 0 ? (
               <div className="p-8 text-center text-slate-500">
                 Nenhum aluno cadastrado no sistema. Adicione alunos na aba "Gestão de Alunos".
               </div>
             ) : (
-              students.map((student, idx) => {
+              sortedStudents.map((student, idx) => {
                 const currentStatus = records[student.id] || 'present';
                 const currentNote = recordNotes[student.id] || '';
 
@@ -722,16 +760,50 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
           </div>
         </div>
 
-        {/* Submit Form Button */}
-        <div className="flex items-center justify-end gap-3 pt-2">
-          <button
-            type="submit"
-            id="save-rollcall-btn"
-            className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm rounded-xl transition-all shadow-md shadow-indigo-600/30 flex items-center gap-2 cursor-pointer"
-          >
-            <Save className="w-4 h-4" />
-            <span>Salvar Registro de Chamada</span>
-          </button>
+        {/* Submit Form Button and Inline Feedback */}
+        <div className="bg-slate-900/90 p-5 rounded-2xl border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="text-left w-full sm:w-auto">
+            {savedSuccess ? (
+              <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm">
+                <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                <span>{saveSuccessMessage || `Chamada da Aula #${classNumber} salva com sucesso!`}</span>
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400">
+                Clique no botão para salvar a data, horários, tema e a chamada de todos os alunos.
+              </p>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+            <button
+              type="submit"
+              id="save-rollcall-btn"
+              disabled={isSaving}
+              className={`w-full sm:w-auto px-6 py-3 font-bold text-sm rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer ${
+                savedSuccess
+                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30'
+                  : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/30'
+              }`}
+            >
+              {isSaving ? (
+                <>
+                  <Clock className="w-4 h-4 animate-spin" />
+                  <span>Salvando Registro...</span>
+                </>
+              ) : savedSuccess ? (
+                <>
+                  <CheckCircle2 className="w-4 h-4 text-white" />
+                  <span>✓ Registro de Chamada Salvo com Sucesso!</span>
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  <span>Salvar Registro de Chamada</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </form>
     </div>

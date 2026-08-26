@@ -7,6 +7,7 @@ export interface UserSession {
   name: string;
   role: UserRole;
   studentId?: string;
+  registrationId?: string;
 }
 
 export interface Student {
