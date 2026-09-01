@@ -281,8 +281,8 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
       durationMinutes,
       minRequiredMinutes,
       topic: topic.trim() || getDefaultTopicForClass(Number(classNumber)),
-      description: description.trim(),
-      instructor: instructor.trim(),
+      description: description.trim() || `Registro de chamada da Aula #${classNumber} encerrado com consolidação automática de presenças e faltas.`,
+      instructor: instructor.trim() || 'Professor Rogério Augusto Fernandes',
       records: updatedRecs,
       recordNotes,
       isClosed: true,
@@ -293,14 +293,22 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
     onSaveClass(newSession);
     setSelectedClassId(targetId);
     setSavedSuccess(true);
-    setSaveSuccessMessage(
-      `Chamada da Aula #${classNumber} encerrada! (${presentTotal} Presentes, ${absentTotal} Faltas lançadas e salvas no sistema).`
-    );
+    const feedbackMsg = `Chamada da Aula #${classNumber} encerrada com sucesso! ${presentTotal} Presente(s), ${absentTotal} Falta(s) gravada(s)${justifiedTotal > 0 ? ` e ${justifiedTotal} Justificado(s)` : ''}.`;
+    setSaveSuccessMessage(feedbackMsg);
+    setConfrontFeedback(feedbackMsg);
+
+    // If there are present students, show them; otherwise show all
+    if (presentTotal > 0) {
+      setListFilterTab('present');
+    } else {
+      setListFilterTab('all');
+    }
 
     setTimeout(() => {
       setSavedSuccess(false);
       setSaveSuccessMessage(null);
-    }, 6000);
+      setConfrontFeedback(null);
+    }, 7000);
   };
 
   // Confrontation: Cross-reference registered students with system logins
