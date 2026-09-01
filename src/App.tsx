@@ -37,14 +37,32 @@ export default function App() {
   const [isExcelModalOpen, setIsExcelModalOpen] = useState(false);
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
 
-  // Initial Load
+  // Initial Load and Cross-Tab Real-Time Sync
   useEffect(() => {
-    const loadedSt = loadStudents();
-    const loadedCl = loadClasses();
-    const loadedGr = loadGrades();
-    setStudents(loadedSt);
-    setClasses(loadedCl);
-    setGrades(loadedGr);
+    const syncFromStorage = () => {
+      const loadedSt = loadStudents();
+      const loadedCl = loadClasses();
+      const loadedGr = loadGrades();
+      setStudents(loadedSt);
+      setClasses(loadedCl);
+      setGrades(loadedGr);
+    };
+
+    syncFromStorage();
+
+    const handleStorageChange = (e: StorageEvent) => {
+      if (
+        e.key === 'consultoria_classes_v7_clean' ||
+        e.key === 'consultoria_students_v7_clean' ||
+        e.key === 'consultoria_student_logins_v1' ||
+        e.key === 'consultoria_grades_v1'
+      ) {
+        syncFromStorage();
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
   // Save changes

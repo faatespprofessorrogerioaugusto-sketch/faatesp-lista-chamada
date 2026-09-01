@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ClassSession, AttendanceStatus } from '../types';
-import { CheckCircle2, Calendar, BookOpen, Clock, User, Award, Check } from 'lucide-react';
+import { recordStudentLogin } from '../utils/storage';
+import { CheckCircle2, Calendar, BookOpen, Clock, User, Award, Check, Zap } from 'lucide-react';
 
 interface StudentRollCallProps {
   studentName: string;
@@ -30,12 +31,13 @@ export const StudentRollCall: React.FC<StudentRollCallProps> = ({
   const activeClass = sortedClasses.find((c) => c.id === selectedClassId) || sortedClasses[0];
 
   const handleRegisterPresence = (classId: string) => {
+    recordStudentLogin(studentId, studentName);
     onUpdateAttendance(classId, studentId, 'present');
     setSuccessClassId(classId);
 
     setTimeout(() => {
       setSuccessClassId(null);
-    }, 4000);
+    }, 5000);
   };
 
   // Student Statistics

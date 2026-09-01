@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Student, ClassSession, AttendanceStatus, StudentLoginRecord } from '../types';
 import { loadStudentLogins } from '../utils/storage';
-import { CheckCircle2, XCircle, AlertCircle, Save, Calendar, BookOpen, User, Sparkles, Clock, Check, PlusCircle, Layers, Users, Zap } from 'lucide-react';
+import { CheckCircle2, XCircle, AlertCircle, Save, Calendar, BookOpen, User, Sparkles, Clock, Check, PlusCircle, Layers, Users, Zap, RefreshCw, Radio, UserCheck, UserX } from 'lucide-react';
 
 interface ClassRollCallProps {
   students: Student[];
@@ -54,9 +54,15 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
   const [records, setRecords] = useState<Record<string, AttendanceStatus>>({});
   const [recordNotes, setRecordNotes] = useState<Record<string, string>>({});
 
+  // List View Filter for Check-in em Tempo Real
+  const [listFilterTab, setListFilterTab] = useState<'present' | 'pending' | 'all'>('present');
+
   // Student Logins Tracking & Confrontation
   const [studentLogins, setStudentLogins] = useState<Record<string, StudentLoginRecord>>({});
   const [confrontFeedback, setConfrontFeedback] = useState<string | null>(null);
+
+  // Live Sync Indicator
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Save State & Feedback
   const [isSaving, setIsSaving] = useState(false);
@@ -64,11 +70,35 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
 
-  // Load student logins on mount or when active class changes
-  useEffect(() => {
+  // Load student logins and sync across tabs
+  const syncLogins = () => {
     const logins = loadStudentLogins();
     setStudentLogins(logins);
-  }, [selectedClassId]);
+    return logins;
+  };
+
+  useEffect(() => {
+    syncLogins();
+
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'consultoria_student_logins_v1' || e.key === 'consultoria_classes_v7_clean') {
+        const freshLogins = syncLogins();
+        // Update presence for students who just logged in
+        setRecords((prev) => {
+          const updated = { ...prev };
+          students.forEach((s) => {
+            if (freshLogins[s.id] && updated[s.id] !== 'present') {
+              updated[s.id] = 'present';
+            }
+          });
+          return updated;
+        });
+      }
+    };
+
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, [students]);
 
   // Calculate 90% required presence minutes dynamically
   const minRequiredMinutes = Math.round((durationMinutes * 90) / 100);
@@ -189,6 +219,88 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
       newRecs[s.id] = status;
     });
     setRecords(newRecs);
+  };
+
+  // Real-time synchronization of student check-ins
+  const handleSyncCheckInsNow = () => {
+    setIsSyncing(true);
+    const freshLogins = syncLogins();
+    let count = 0;
+    setRecords((prev) => {
+      const updated = { ...prev };
+      students.forEach((s) => {
+        if (freshLogins[s.id] && updated[s.id] !== 'present') {
+          updated[s.id] = 'present';
+          count++;
+        }
+      });
+      return updated;
+    });
+
+    setTimeout(() => {
+      setIsSyncing(false);
+      setConfrontFeedback(
+        `Check-ins em tempo real sincronizados! ${Object.keys(freshLogins).length} aluno(s) com login/check-in ativo.`
+      );
+      setTimeout(() => setConfrontFeedback(null), 4000);
+    }, 400);
+  };
+
+  // Encerrar Chamada: Consolidar presenças e lançar faltas automáticas para quem não fez check-in
+  const handleCloseCallAndMarkAbsences = () => {
+    const updatedRecs: Record<string, AttendanceStatus> = {};
+    let presentTotal = 0;
+    let absentTotal = 0;
+    let justifiedTotal = 0;
+
+    students.forEach((s) => {
+      const st = records[s.id];
+      if (st === 'present') {
+        updatedRecs[s.id] = 'present';
+        presentTotal++;
+      } else if (st === 'justified') {
+        updatedRecs[s.id] = 'justified';
+        justifiedTotal++;
+      } else {
+        updatedRecs[s.id] = 'absent';
+        absentTotal++;
+      }
+    });
+
+    setRecords(updatedRecs);
+
+    const existingClass = sortedClasses.find((c) => c.id === selectedClassId || c.classNumber === Number(classNumber));
+    const targetId = existingClass ? existingClass.id : (selectedClassId !== 'new' ? selectedClassId : `class-${Date.now()}`);
+
+    const newSession: ClassSession = {
+      id: targetId,
+      classNumber: Number(classNumber),
+      date,
+      startTime,
+      endTime,
+      durationMinutes,
+      minRequiredMinutes,
+      topic: topic.trim() || getDefaultTopicForClass(Number(classNumber)),
+      description: description.trim(),
+      instructor: instructor.trim(),
+      records: updatedRecs,
+      recordNotes,
+      isClosed: true,
+      createdAt: existingClass?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    onSaveClass(newSession);
+    setSelectedClassId(targetId);
+    setSavedSuccess(true);
+    setSaveSuccessMessage(
+      `Chamada da Aula #${classNumber} encerrada! (${presentTotal} Presentes, ${absentTotal} Faltas lançadas e salvas no sistema).`
+    );
+
+    setTimeout(() => {
+      setSavedSuccess(false);
+      setSaveSuccessMessage(null);
+    }, 6000);
   };
 
   // Confrontation: Cross-reference registered students with system logins
@@ -645,61 +757,81 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
 
             <div className="h-8 w-px bg-slate-800 hidden sm:block" />
 
-            <div className="flex items-center gap-4">
-              <div className="bg-emerald-950/80 border border-emerald-800/60 px-3 py-1.5 rounded-xl text-center">
-                <span className="text-[10px] text-emerald-400 uppercase font-bold block">Presentes (P)</span>
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="bg-emerald-950/80 border border-emerald-800/60 px-3.5 py-1.5 rounded-xl text-center shadow-xs">
+                <span className="text-[10px] text-emerald-400 uppercase font-bold block flex items-center justify-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  Presentes / Check-in (P)
+                </span>
                 <span className="text-lg font-black text-emerald-300">{presentCount}</span>
               </div>
 
-              <div className="bg-rose-950/80 border border-rose-800/60 px-3 py-1.5 rounded-xl text-center">
-                <span className="text-[10px] text-rose-400 uppercase font-bold block">Ausentes (A)</span>
+              <div className="bg-rose-950/80 border border-rose-800/60 px-3.5 py-1.5 rounded-xl text-center shadow-xs">
+                <span className="text-[10px] text-rose-400 uppercase font-bold block">
+                  Aguardando / Ausentes (A)
+                </span>
                 <span className="text-lg font-black text-rose-300">{absentCount}</span>
               </div>
 
-              <div className="bg-amber-950/80 border border-amber-800/60 px-3 py-1.5 rounded-xl text-center">
+              <div className="bg-amber-950/80 border border-amber-800/60 px-3.5 py-1.5 rounded-xl text-center shadow-xs">
                 <span className="text-[10px] text-amber-400 uppercase font-bold block">Justificados (J)</span>
                 <span className="text-lg font-black text-amber-300">{justifiedCount}</span>
               </div>
             </div>
           </div>
 
-          {/* Quick Mark & Confrontation Buttons */}
+          {/* Quick Mark, Real-time Sync & Close Call Buttons */}
           <div className="flex items-center gap-2 w-full lg:w-auto justify-end flex-wrap">
-            {/* CONFRONTATION BUTTON */}
+            {/* REAL-TIME SYNC BUTTON */}
             <button
               type="button"
-              onClick={handleConfrontLogins}
-              id="confront-logins-btn"
-              className="px-3.5 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl transition-all shadow-md shadow-indigo-600/30 flex items-center gap-1.5 cursor-pointer"
-              title="Confrontar alunos com o login: alunos com login ficam presentes e quem não entrou fica ausente"
+              onClick={handleSyncCheckInsNow}
+              id="sync-checkins-btn"
+              disabled={isSyncing}
+              className="px-3.5 py-2 text-xs font-bold bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-indigo-500/30 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              title="Sincronizar novos logins e presenças registradas em tempo real"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-indigo-400' : ''}`} />
+              <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Check-ins'}</span>
+            </button>
+
+            {/* CLOSE CALL BUTTON (Lançar faltas para quem não fez check-in) */}
+            <button
+              type="button"
+              onClick={handleCloseCallAndMarkAbsences}
+              id="close-call-btn"
+              className="px-3.5 py-2 text-xs font-black bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl transition-all shadow-md shadow-indigo-600/30 flex items-center gap-1.5 cursor-pointer"
+              title="Encerrar a chamada: confirma os presentes e grava automaticamente ausência (falta) para quem não fez check-in"
             >
               <Zap className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
-              <span>Confrontar Logins (Ausentes Automáticos)</span>
+              <span>Encerrar Chamada & Gravar Faltas</span>
             </button>
 
             <button
               type="button"
               onClick={() => handleMarkAll('present')}
               id="mark-all-present-btn"
-              className="px-3 py-2 text-xs font-semibold bg-emerald-700/80 hover:bg-emerald-600 text-white rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
+              className="px-2.5 py-2 text-xs font-semibold bg-emerald-700/80 hover:bg-emerald-600 text-white rounded-xl transition-colors cursor-pointer flex items-center gap-1"
+              title="Marcar todos como presentes manualmente"
             >
               <Check className="w-3.5 h-3.5" />
-              <span>Todos Presentes</span>
+              <span>Todos (P)</span>
             </button>
 
             <button
               type="button"
               onClick={() => handleMarkAll('absent')}
               id="mark-all-absent-btn"
-              className="px-3 py-2 text-xs font-semibold bg-rose-700/80 hover:bg-rose-600 text-white rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
+              className="px-2.5 py-2 text-xs font-semibold bg-rose-700/80 hover:bg-rose-600 text-white rounded-xl transition-colors cursor-pointer flex items-center gap-1"
+              title="Marcar todos como ausentes manualmente"
             >
               <XCircle className="w-3.5 h-3.5" />
-              <span>Todos Ausentes</span>
+              <span>Todos (A)</span>
             </button>
           </div>
         </div>
 
-        {/* Confrontation Feedback Notification */}
+        {/* Feedback Notification */}
         {confrontFeedback && (
           <div className="p-4 bg-indigo-950/90 border border-indigo-700 rounded-2xl text-indigo-200 text-sm font-semibold flex items-center gap-3 animate-fade-in shadow-lg">
             <Zap className="w-5 h-5 text-amber-400 fill-amber-400 shrink-0" />
@@ -707,140 +839,224 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
           </div>
         )}
 
-        {/* Student List Roll Call Table */}
+        {/* Check-in em Tempo Real Tabs & Student List Table */}
         <div className="bg-slate-900/80 rounded-2xl border border-slate-800 shadow-xs overflow-hidden">
-          <div className="p-4 bg-slate-800/80 border-b border-slate-700/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+          {/* Filter Tabs Header */}
+          <div className="p-4 bg-slate-800/80 border-b border-slate-700/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div className="flex items-center gap-2 flex-wrap">
-              <User className="w-4 h-4 text-indigo-400" />
-              <h3 className="font-bold text-slate-100 text-sm tracking-tight">
-                Lista de Alunos - Marcação de Presença
-              </h3>
-              <span className="bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 text-[11px] font-semibold px-2 py-0.5 rounded-md">
-                Ordem Alfabética (A-Z)
-              </span>
+              {/* Tab 1: Presentes / Check-in Realizado */}
+              <button
+                type="button"
+                onClick={() => setListFilterTab('present')}
+                id="filter-tab-present"
+                className={`px-3.5 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+                  listFilterTab === 'present'
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
+                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
+                }`}
+              >
+                <UserCheck className="w-3.5 h-3.5 text-emerald-300" />
+                <span>Check-in Realizado ({presentCount})</span>
+              </button>
+
+              {/* Tab 2: Aguardando Check-in */}
+              <button
+                type="button"
+                onClick={() => setListFilterTab('pending')}
+                id="filter-tab-pending"
+                className={`px-3.5 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+                  listFilterTab === 'pending'
+                    ? 'bg-amber-600 text-white shadow-md shadow-amber-600/30'
+                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
+                }`}
+              >
+                <UserX className="w-3.5 h-3.5 text-amber-300" />
+                <span>Aguardando Check-in ({absentCount})</span>
+              </button>
+
+              {/* Tab 3: Todos os Alunos (A-Z) */}
+              <button
+                type="button"
+                onClick={() => setListFilterTab('all')}
+                id="filter-tab-all"
+                className={`px-3.5 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+                  listFilterTab === 'all'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
+                }`}
+              >
+                <Users className="w-3.5 h-3.5 text-indigo-300" />
+                <span>Todos os Alunos ({sortedStudents.length})</span>
+              </button>
             </div>
+
             <div className="flex items-center gap-2 text-xs text-slate-400">
               <span className="inline-flex items-center gap-1 bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20 text-[11px]">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                {Object.keys(studentLogins).length} com login
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                Modo: Check-in em Tempo Real
               </span>
-              <span>Total: {sortedStudents.length} alunos</span>
             </div>
           </div>
 
+          {/* List Content */}
           <div className="divide-y divide-slate-800/80">
             {sortedStudents.length === 0 ? (
               <div className="p-8 text-center text-slate-500">
                 Nenhum aluno cadastrado no sistema. Adicione alunos na aba "Gestão de Alunos".
               </div>
-            ) : (
-              sortedStudents.map((student, idx) => {
-                const currentStatus = records[student.id] || 'present';
-                const currentNote = recordNotes[student.id] || '';
-                const isLogged = !!studentLogins[student.id];
-                const loginData = studentLogins[student.id];
+            ) : listFilterTab === 'present' && presentCount === 0 ? (
+              /* EMPTY STATE: Aguardando alunos entrarem e marcarem presença */
+              <div className="p-10 text-center space-y-4 max-w-lg mx-auto">
+                <div className="w-14 h-14 rounded-2xl bg-indigo-950/60 border border-indigo-800/60 flex items-center justify-center mx-auto text-indigo-400 shadow-lg relative">
+                  <Radio className="w-7 h-7 animate-pulse text-indigo-400" />
+                  <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                  </span>
+                </div>
+                <div className="space-y-1.5">
+                  <h4 className="text-base font-bold text-slate-100">
+                    Aguardando Check-in dos Alunos em Tempo Real
+                  </h4>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    A lista de presenças inicia <strong>vazia</strong>. Conforme os alunos acessarem a plataforma pelo celular ou computador e clicarem em <strong>"Registrar Presença"</strong>, seus nomes aparecerão aqui automaticamente.
+                  </p>
+                </div>
 
-                return (
-                  <div
-                    key={student.id}
-                    className={`p-4 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-4 ${
-                      currentStatus === 'present'
-                        ? 'hover:bg-slate-800/40'
-                        : currentStatus === 'absent'
-                        ? 'bg-rose-950/20'
-                        : 'bg-amber-950/20'
-                    }`}
+                <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setListFilterTab('pending')}
+                    className="px-3.5 py-2 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl transition-all cursor-pointer"
                   >
-                    {/* Student Info */}
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs font-mono font-bold text-slate-500 w-6 text-right">
-                        {idx + 1}.
-                      </span>
-                      <div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-bold text-slate-100 text-sm">{student.name}</span>
-                          {isLogged ? (
-                            <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[10px] font-semibold px-2 py-0.5 rounded-md flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                              Fez Login {loginData?.loginTime ? `(${loginData.loginTime})` : ''}
-                            </span>
-                          ) : (
-                            <span className="bg-rose-500/10 text-rose-400 border border-rose-500/30 text-[10px] font-semibold px-2 py-0.5 rounded-md flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                              Sem Login (Ausente)
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-xs text-slate-400 font-mono">
-                          {student.registrationId ? `Matrícula: ${student.registrationId}` : 'Sem matrícula'}
+                    Ver Alunos Aguardando ({absentCount})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSyncCheckInsNow}
+                    className="px-3.5 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Verificar Entradas Agora</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* STUDENT ROWS BASED ON ACTIVE FILTER */
+              sortedStudents
+                .filter((student) => {
+                  const currentStatus = records[student.id] || 'absent';
+                  if (listFilterTab === 'present') return currentStatus === 'present';
+                  if (listFilterTab === 'pending') return currentStatus !== 'present';
+                  return true; // 'all'
+                })
+                .map((student, idx) => {
+                  const currentStatus = records[student.id] || 'absent';
+                  const currentNote = recordNotes[student.id] || '';
+                  const isLogged = !!studentLogins[student.id];
+                  const loginData = studentLogins[student.id];
+
+                  return (
+                    <div
+                      key={student.id}
+                      className={`p-4 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-4 ${
+                        currentStatus === 'present'
+                          ? 'hover:bg-slate-800/40'
+                          : currentStatus === 'absent'
+                          ? 'bg-rose-950/15'
+                          : 'bg-amber-950/15'
+                      }`}
+                    >
+                      {/* Student Info */}
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs font-mono font-bold text-slate-500 w-6 text-right">
+                          {idx + 1}.
+                        </span>
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-slate-100 text-sm">{student.name}</span>
+                            {currentStatus === 'present' ? (
+                              <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[10px] font-semibold px-2 py-0.5 rounded-md flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                Presença Confirmada {loginData?.loginTime ? `(${loginData.loginTime})` : ''}
+                              </span>
+                            ) : (
+                              <span className="bg-rose-500/10 text-rose-400 border border-rose-500/30 text-[10px] font-semibold px-2 py-0.5 rounded-md flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                                Aguardando Check-in (Ausente)
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-slate-400 font-mono">
+                            {student.registrationId ? `Matrícula: ${student.registrationId}` : 'Sem matrícula'}
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    {/* Status Toggle Radio Group */}
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full md:w-auto">
-                      <div className="inline-flex rounded-xl p-1 bg-slate-800 border border-slate-700">
-                        {/* PRESENTE */}
-                        <button
-                          type="button"
-                          onClick={() => handleStatusChange(student.id, 'present')}
-                          id={`status-present-${student.id}`}
-                          className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
-                            currentStatus === 'present'
-                              ? 'bg-emerald-600 text-white shadow-xs'
-                              : 'text-slate-400 hover:text-slate-200'
-                          }`}
-                        >
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>Presente</span>
-                        </button>
+                      {/* Status Toggle Radio Group & Manual Fast Mark */}
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full md:w-auto">
+                        <div className="inline-flex rounded-xl p-1 bg-slate-800 border border-slate-700">
+                          {/* PRESENTE */}
+                          <button
+                            type="button"
+                            onClick={() => handleStatusChange(student.id, 'present')}
+                            id={`status-present-${student.id}`}
+                            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+                              currentStatus === 'present'
+                                ? 'bg-emerald-600 text-white shadow-xs'
+                                : 'text-slate-400 hover:text-slate-200'
+                            }`}
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>Presente</span>
+                          </button>
 
-                        {/* AUSENTE */}
-                        <button
-                          type="button"
-                          onClick={() => handleStatusChange(student.id, 'absent')}
-                          id={`status-absent-${student.id}`}
-                          className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
-                            currentStatus === 'absent'
-                              ? 'bg-rose-600 text-white shadow-xs'
-                              : 'text-slate-400 hover:text-slate-200'
-                          }`}
-                        >
-                          <XCircle className="w-3.5 h-3.5" />
-                          <span>Ausente</span>
-                        </button>
+                          {/* AUSENTE */}
+                          <button
+                            type="button"
+                            onClick={() => handleStatusChange(student.id, 'absent')}
+                            id={`status-absent-${student.id}`}
+                            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+                              currentStatus === 'absent'
+                                ? 'bg-rose-600 text-white shadow-xs'
+                                : 'text-slate-400 hover:text-slate-200'
+                            }`}
+                          >
+                            <XCircle className="w-3.5 h-3.5" />
+                            <span>Ausente</span>
+                          </button>
 
-                        {/* JUSTIFICADO */}
-                        <button
-                          type="button"
-                          onClick={() => handleStatusChange(student.id, 'justified')}
-                          id={`status-justified-${student.id}`}
-                          className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
-                            currentStatus === 'justified'
-                              ? 'bg-amber-500 text-white shadow-xs'
-                              : 'text-slate-400 hover:text-slate-200'
-                          }`}
-                        >
-                          <AlertCircle className="w-3.5 h-3.5" />
-                          <span>Justificado</span>
-                        </button>
+                          {/* JUSTIFICADO */}
+                          <button
+                            type="button"
+                            onClick={() => handleStatusChange(student.id, 'justified')}
+                            id={`status-justified-${student.id}`}
+                            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+                              currentStatus === 'justified'
+                                ? 'bg-amber-500 text-white shadow-xs'
+                                : 'text-slate-400 hover:text-slate-200'
+                            }`}
+                          >
+                            <AlertCircle className="w-3.5 h-3.5" />
+                            <span>Justificado</span>
+                          </button>
+                        </div>
+
+                        {/* Optional Note input for absence or justification */}
+                        {(currentStatus === 'absent' || currentStatus === 'justified') && (
+                          <input
+                            type="text"
+                            placeholder="Motivo / Observação (opcional)..."
+                            value={currentNote}
+                            onChange={(e) => handleNoteChange(student.id, e.target.value)}
+                            id={`note-input-${student.id}`}
+                            className="w-full sm:w-60 text-xs px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 text-slate-200 placeholder-slate-500"
+                          />
+                        )}
                       </div>
-
-                      {/* Optional Note input for absence or justification */}
-                      {(currentStatus === 'absent' || currentStatus === 'justified') && (
-                        <input
-                          type="text"
-                          placeholder="Motivo / Observação (opcional)..."
-                          value={currentNote}
-                          onChange={(e) => handleNoteChange(student.id, e.target.value)}
-                          id={`note-input-${student.id}`}
-                          className="w-full sm:w-60 text-xs px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 text-slate-200 placeholder-slate-500"
-                        />
-                      )}
                     </div>
-                  </div>
-                );
-              })
+                  );
+                })
             )}
           </div>
         </div>
