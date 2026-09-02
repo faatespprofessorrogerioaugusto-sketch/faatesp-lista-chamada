@@ -38,12 +38,15 @@ export const UnifiedDashboard: React.FC<UnifiedDashboardProps> = ({
 
   const overview = getCourseOverviewStats(students, classes);
 
+  // Sorted list of students (A-Z)
+  const sortedStudents = [...students].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }));
+
   // If a specific student is selected
-  const selectedStudent = students.find((s) => s.id === selectedStudentFilter);
+  const selectedStudent = sortedStudents.find((s) => s.id === selectedStudentFilter);
   const selectedStudentStats = selectedStudent ? getStudentStats(selectedStudent, classes) : null;
 
   // Filter student list for summary table
-  const filteredStudents = students.filter(
+  const filteredStudents = sortedStudents.filter(
     (s) =>
       s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (s.registrationId && s.registrationId.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -76,7 +79,7 @@ export const UnifiedDashboard: React.FC<UnifiedDashboardProps> = ({
           >
             <option value="all">📊 Visão Geral (Todos os Alunos)</option>
             <optgroup label="Alunos Individuais">
-              {students.map((st) => (
+              {sortedStudents.map((st) => (
                 <option key={st.id} value={st.id}>
                   👤 {st.name} {st.registrationId ? `(${st.registrationId})` : ''}
                 </option>

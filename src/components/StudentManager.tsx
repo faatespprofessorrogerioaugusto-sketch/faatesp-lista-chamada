@@ -84,11 +84,13 @@ export const StudentManager: React.FC<StudentManagerProps> = ({
     setIsFormOpen(false);
   };
 
-  const filtered = students.filter(
-    (s) =>
-      s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (s.registrationId && s.registrationId.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const filtered = [...students]
+    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }))
+    .filter(
+      (s) =>
+        s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (s.registrationId && s.registrationId.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
 
   return (
     <div className="space-y-6">

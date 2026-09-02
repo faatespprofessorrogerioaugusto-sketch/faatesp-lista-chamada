@@ -59,12 +59,13 @@ export const GradesBulletin: React.FC<GradesBulletinProps> = ({
     examN2: '',
   });
 
-  // Calculate grades for all students
+  // Calculate grades for all students (sorted alphabetically A-Z)
   const calculatedList: CalculatedStudentGrade[] = useMemo(() => {
-    return students.map((student) => {
+    const list = students.map((student) => {
       const studentGrade = grades[student.id];
       return calculateStudentGrade(student, studentGrade, classes);
     });
+    return list.sort((a, b) => a.studentName.localeCompare(b.studentName, 'pt-BR', { sensitivity: 'base' }));
   }, [students, grades, classes]);
 
   // If user is Aluno, find student record (by ID or matching name)

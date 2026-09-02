@@ -35,12 +35,14 @@ export const StudentQuery: React.FC<StudentQueryProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [copiedSummary, setCopiedSummary] = useState(false);
 
-  // Filter student candidates
-  const filteredStudents = students.filter(
-    (s) =>
-      s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (s.registrationId && s.registrationId.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  // Filter student candidates (sorted alphabetically A-Z)
+  const filteredStudents = [...students]
+    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }))
+    .filter(
+      (s) =>
+        s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (s.registrationId && s.registrationId.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
 
   // Active student selection
   const currentStudent = students.find((s) => s.id === selectedStudentId) || (filteredStudents.length > 0 ? filteredStudents[0] : null);
