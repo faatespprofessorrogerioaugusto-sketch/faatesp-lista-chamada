@@ -38,6 +38,7 @@ export const recordStudentLogin = (studentId: string, studentName: string): Reco
 
   try {
     localStorage.setItem(STORAGE_KEYS.STUDENT_LOGINS, JSON.stringify(current));
+    window.dispatchEvent(new CustomEvent('consultoria-sync', { detail: { key: STORAGE_KEYS.STUDENT_LOGINS, studentId } }));
   } catch (e) {
     console.error('Error saving student login record:', e);
   }
@@ -217,6 +218,7 @@ export const loadClasses = (): ClassSession[] => {
 export const saveClasses = (classes: ClassSession[]): void => {
   try {
     localStorage.setItem(STORAGE_KEYS.CLASSES, JSON.stringify(classes));
+    window.dispatchEvent(new CustomEvent('consultoria-sync', { detail: { key: STORAGE_KEYS.CLASSES } }));
   } catch (e) {
     console.error('Error saving classes:', e);
   }

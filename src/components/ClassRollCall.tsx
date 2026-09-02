@@ -72,35 +72,78 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
 
-  // Load student logins and sync across tabs
+  // Load student logins and sync in real-time
   const syncLogins = () => {
     const logins = loadStudentLogins();
     setStudentLogins(logins);
     return logins;
   };
 
+  // 100% Automatic real-time background synchronization (no buttons needed)
   useEffect(() => {
-    syncLogins();
+    const doAutoSync = () => {
+      const currentLogins = loadStudentLogins();
+      const freshClasses = loadClasses();
+      const currentClassInStorage = freshClasses.find(
+        (c) => c.id === selectedClassId || c.classNumber === Number(classNumber)
+      );
+
+      setStudentLogins(currentLogins);
+
+      setRecords((prev) => {
+        let changed = false;
+        const updated = { ...prev };
+
+        students.forEach((s) => {
+          const directLogin = currentLogins[s.id];
+          const sNorm = normalizeString(s.name);
+          const nameLogin = Object.values(currentLogins).find(
+            (l) => normalizeString(l.studentName) === sNorm
+          );
+          const hasLogin = !!directLogin || !!nameLogin;
+          const classRecordPresent = currentClassInStorage?.records?.[s.id] === 'present';
+
+          if (hasLogin || classRecordPresent) {
+            if (updated[s.id] !== 'present') {
+              updated[s.id] = 'present';
+              changed = true;
+            }
+          }
+        });
+
+        return changed ? updated : prev;
+      });
+    };
+
+    // Initial check
+    doAutoSync();
+
+    // Polling interval every 1 second for instant auto-update
+    const interval = setInterval(doAutoSync, 1000);
 
     const handleStorage = (e: StorageEvent) => {
-      if (e.key === 'consultoria_student_logins_v1' || e.key === 'consultoria_classes_v7_clean') {
-        const freshLogins = syncLogins();
-        // Update presence for students who just logged in
-        setRecords((prev) => {
-          const updated = { ...prev };
-          students.forEach((s) => {
-            if (freshLogins[s.id] && updated[s.id] !== 'present') {
-              updated[s.id] = 'present';
-            }
-          });
-          return updated;
-        });
+      if (
+        e.key === 'consultoria_student_logins_v1' ||
+        e.key === 'consultoria_classes_v7_clean' ||
+        e.key === 'consultoria_students_v7_clean'
+      ) {
+        doAutoSync();
       }
     };
 
+    const handleCustomSync = () => {
+      doAutoSync();
+    };
+
     window.addEventListener('storage', handleStorage);
-    return () => window.removeEventListener('storage', handleStorage);
-  }, [students]);
+    window.addEventListener('consultoria-sync', handleCustomSync);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('consultoria-sync', handleCustomSync);
+    };
+  }, [students, selectedClassId, classNumber]);
 
   // Calculate 90% required presence minutes dynamically
   const minRequiredMinutes = Math.round((durationMinutes * 90) / 100);
@@ -882,20 +925,13 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
             </div>
           </div>
 
-          {/* Quick Mark, Real-time Sync & Close Call Buttons */}
+          {/* Quick Mark & Close Call Buttons */}
           <div className="flex items-center gap-2 w-full lg:w-auto justify-end flex-wrap">
-            {/* REAL-TIME SYNC BUTTON */}
-            <button
-              type="button"
-              onClick={handleSyncCheckInsNow}
-              id="sync-checkins-btn"
-              disabled={isSyncing}
-              className="px-3.5 py-2 text-xs font-bold bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-indigo-500/30 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-              title="Sincronizar novos logins e presenças registradas em tempo real"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-indigo-400' : ''}`} />
-              <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Check-ins'}</span>
-            </button>
+            {/* Live Auto-sync Status Indicator */}
+            <div className="px-3 py-1.5 text-xs font-semibold bg-slate-800 text-emerald-400 border border-emerald-500/30 rounded-xl flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span>Sincronização Automática (A-Z)</span>
+            </div>
 
             {/* CLOSE CALL BUTTON (Lançar faltas para quem não fez check-in) */}
             <button
@@ -1008,63 +1044,26 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
               </div>
             ) : listFilterTab === 'present' && presentCount === 0 ? (
               /* EMPTY STATE: Aguardando alunos entrarem e marcarem presença */
-              <div className="p-10 text-center space-y-4 max-w-lg mx-auto">
-                <div className="w-14 h-14 rounded-2xl bg-indigo-950/60 border border-indigo-800/60 flex items-center justify-center mx-auto text-indigo-400 shadow-lg relative">
-                  <Radio className="w-7 h-7 animate-pulse text-indigo-400" />
-                  <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
-                  </span>
+              <div className="p-8 text-center space-y-3 max-w-md mx-auto">
+                <div className="w-12 h-12 rounded-2xl bg-indigo-950/60 border border-indigo-800/60 flex items-center justify-center mx-auto text-indigo-400 shadow-sm">
+                  <Radio className="w-6 h-6 animate-pulse text-indigo-400" />
                 </div>
-                <div className="space-y-1.5">
-                  <h4 className="text-base font-bold text-slate-100">
-                    Aguardando Check-in dos Alunos em Tempo Real
+                <div className="space-y-1">
+                  <h4 className="text-sm font-bold text-slate-100">
+                    Aguardando Check-in dos Alunos
                   </h4>
-                  <p className="text-xs text-slate-400 leading-relaxed">
-                    A lista de presenças inicia <strong>vazia</strong>. Conforme os alunos acessarem a plataforma pelo celular ou computador e clicarem em <strong>"Registrar Presença"</strong>, seus nomes aparecerão aqui automaticamente.
+                  <p className="text-xs text-slate-400">
+                    Nenhum aluno confirmou presença ainda. Conforme fizerem login e confirmarem presença, seus nomes aparecerão aqui automaticamente em ordem alfabética.
                   </p>
-                  {lastSyncTime && (
-                    <p className="text-[11px] text-indigo-300/90 font-mono pt-1">
-                      Última verificação: {lastSyncTime}
-                    </p>
-                  )}
                 </div>
-
-                <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-2 flex-wrap">
-                  <button
-                    type="button"
-                    onClick={() => setListFilterTab('pending')}
-                    id="empty-view-pending-btn"
-                    className="px-3.5 py-2 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
-                  >
-                    <UserX className="w-3.5 h-3.5 text-amber-300" />
-                    <span>Ver Alunos Aguardando ({absentCount})</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleSyncCheckInsNow}
-                    id="empty-sync-btn"
-                    disabled={isSyncing}
-                    className="px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-md shadow-indigo-600/30 disabled:opacity-60"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-indigo-200' : ''}`} />
-                    <span>{isSyncing ? 'Verificando Entradas...' : 'Verificar Entradas Agora'}</span>
-                  </button>
-
-                  {absentCount > 0 && (
-                    <button
-                      type="button"
-                      onClick={handleSimulateStudentCheckIn}
-                      id="empty-simulate-btn"
-                      className="px-3.5 py-2 text-xs font-semibold bg-emerald-950/80 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-700/60 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
-                      title="Simula a entrada de 1 aluno para testar o funcionamento do check-in em tempo real"
-                    >
-                      <Zap className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
-                      <span>Simular Check-in (Teste)</span>
-                    </button>
-                  )}
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setListFilterTab('all')}
+                  className="px-3.5 py-1.5 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl transition-all cursor-pointer inline-flex items-center gap-1.5 mt-2"
+                >
+                  <Users className="w-3.5 h-3.5 text-indigo-300" />
+                  <span>Ver Todos os Alunos (A-Z)</span>
+                </button>
               </div>
             ) : (
               /* STUDENT ROWS BASED ON ACTIVE FILTER */
