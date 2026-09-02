@@ -71,12 +71,13 @@ export const StudentManager: React.FC<StudentManagerProps> = ({
         ...editingStudent,
         name: formattedName,
         registrationId: registrationId.trim(),
+        email: email.trim().toLowerCase(),
       });
     } else {
       onAddStudent({
         name: formattedName,
         registrationId: registrationId.trim(),
-        email: '',
+        email: email.trim().toLowerCase(),
       });
     }
 
@@ -176,6 +177,20 @@ export const StudentManager: React.FC<StudentManagerProps> = ({
                   onChange={(e) => setRegistrationId(e.target.value)}
                   placeholder="Ex: 2026011"
                   className="w-full px-3 py-2 bg-slate-800 border border-slate-700 text-slate-100 rounded-lg focus:ring-2 focus:ring-indigo-500 font-mono placeholder-slate-500"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-300 mb-1">E-mail do Aluno</label>
+                <input
+                  type="email"
+                  autoComplete="off"
+                  spellCheck={false}
+                  data-lpignore="true"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Ex: aluno@universidade.edu.br"
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 text-slate-100 rounded-lg focus:ring-2 focus:ring-indigo-500 placeholder-slate-500"
                 />
               </div>
 
