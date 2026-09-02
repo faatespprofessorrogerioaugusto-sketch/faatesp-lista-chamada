@@ -55,8 +55,8 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
   const [records, setRecords] = useState<Record<string, AttendanceStatus>>({});
   const [recordNotes, setRecordNotes] = useState<Record<string, string>>({});
 
-  // List View Filter for Check-in em Tempo Real
-  const [listFilterTab, setListFilterTab] = useState<'present' | 'pending' | 'all'>('present');
+  // List View Filter for Check-in em Tempo Real (default to 'all' so both present and absent students are visible)
+  const [listFilterTab, setListFilterTab] = useState<'all' | 'present' | 'pending'>('all');
 
   // Student Logins Tracking & Confrontation
   const [studentLogins, setStudentLogins] = useState<Record<string, StudentLoginRecord>>({});
@@ -298,9 +298,6 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
       }
 
       setConfrontFeedback(feedback);
-      if (totalPresent > 0) {
-        setListFilterTab('present');
-      }
       setTimeout(() => setConfrontFeedback(null), 5000);
     }, 450);
   };
@@ -347,7 +344,6 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
     const nowTime = new Date().toLocaleTimeString('pt-BR');
     setLastSyncTime(nowTime);
     setConfrontFeedback(`Check-in simulado com sucesso para ${pendingStudent.name}! Presença registrada às ${nowTime}.`);
-    setListFilterTab('present');
     setTimeout(() => setConfrontFeedback(null), 5000);
   };
 
@@ -401,13 +397,6 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
     const feedbackMsg = `Chamada da Aula #${classNumber} encerrada com sucesso! ${presentTotal} Presente(s), ${absentTotal} Falta(s) gravada(s)${justifiedTotal > 0 ? ` e ${justifiedTotal} Justificado(s)` : ''}.`;
     setSaveSuccessMessage(feedbackMsg);
     setConfrontFeedback(feedbackMsg);
-
-    // If there are present students, show them; otherwise show all
-    if (presentTotal > 0) {
-      setListFilterTab('present');
-    } else {
-      setListFilterTab('all');
-    }
 
     setTimeout(() => {
       setSavedSuccess(false);
@@ -957,14 +946,29 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
           {/* Filter Tabs Header */}
           <div className="p-4 bg-slate-800/80 border-b border-slate-700/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div className="flex items-center gap-2 flex-wrap">
-              {/* Tab 1: Presentes / Check-in Realizado */}
+              {/* Tab 1: Todos os Alunos (A-Z) */}
+              <button
+                type="button"
+                onClick={() => setListFilterTab('all')}
+                id="filter-tab-all"
+                className={`px-3.5 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+                  listFilterTab === 'all'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30 ring-2 ring-indigo-400/40'
+                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
+                }`}
+              >
+                <Users className="w-3.5 h-3.5 text-indigo-300" />
+                <span>Todos os Alunos ({sortedStudents.length})</span>
+              </button>
+
+              {/* Tab 2: Presentes / Check-in Realizado */}
               <button
                 type="button"
                 onClick={() => setListFilterTab('present')}
                 id="filter-tab-present"
                 className={`px-3.5 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
                   listFilterTab === 'present'
-                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30 ring-2 ring-emerald-400/40'
                     : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
                 }`}
               >
@@ -972,34 +976,19 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
                 <span>Check-in Realizado ({presentCount})</span>
               </button>
 
-              {/* Tab 2: Aguardando Check-in */}
+              {/* Tab 3: Aguardando Check-in / Faltantes */}
               <button
                 type="button"
                 onClick={() => setListFilterTab('pending')}
                 id="filter-tab-pending"
                 className={`px-3.5 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
                   listFilterTab === 'pending'
-                    ? 'bg-amber-600 text-white shadow-md shadow-amber-600/30'
+                    ? 'bg-rose-600 text-white shadow-md shadow-rose-600/30 ring-2 ring-rose-400/40'
                     : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
                 }`}
               >
-                <UserX className="w-3.5 h-3.5 text-amber-300" />
-                <span>Aguardando Check-in ({absentCount})</span>
-              </button>
-
-              {/* Tab 3: Todos os Alunos (A-Z) */}
-              <button
-                type="button"
-                onClick={() => setListFilterTab('all')}
-                id="filter-tab-all"
-                className={`px-3.5 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
-                  listFilterTab === 'all'
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
-                }`}
-              >
-                <Users className="w-3.5 h-3.5 text-indigo-300" />
-                <span>Todos os Alunos ({sortedStudents.length})</span>
+                <UserX className="w-3.5 h-3.5 text-rose-300" />
+                <span>Faltantes / Aguardando ({absentCount})</span>
               </button>
             </div>
 
