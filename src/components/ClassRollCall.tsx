@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Student, ClassSession, AttendanceStatus, StudentLoginRecord } from '../types';
-import { loadStudentLogins } from '../utils/storage';
+import { loadStudentLogins, loadClasses, recordStudentLogin } from '../utils/storage';
+import { normalizeString } from '../utils/formatters';
 import { CheckCircle2, XCircle, AlertCircle, Save, Calendar, BookOpen, User, Sparkles, Clock, Check, PlusCircle, Layers, Users, Zap, RefreshCw, Radio, UserCheck, UserX } from 'lucide-react';
 
 interface ClassRollCallProps {
@@ -61,8 +62,9 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
   const [studentLogins, setStudentLogins] = useState<Record<string, StudentLoginRecord>>({});
   const [confrontFeedback, setConfrontFeedback] = useState<string | null>(null);
 
-  // Live Sync Indicator
+  // Live Sync Indicator & Timestamp
   const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
 
   // Save State & Feedback
   const [isSaving, setIsSaving] = useState(false);
@@ -221,29 +223,132 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
     setRecords(newRecs);
   };
 
-  // Real-time synchronization of student check-ins
+  // Real-time synchronization of student check-ins across devices & tabs
   const handleSyncCheckInsNow = () => {
     setIsSyncing(true);
     const freshLogins = syncLogins();
-    let count = 0;
-    setRecords((prev) => {
-      const updated = { ...prev };
-      students.forEach((s) => {
-        if (freshLogins[s.id] && updated[s.id] !== 'present') {
-          updated[s.id] = 'present';
-          count++;
+    const freshClasses = loadClasses();
+    const currentClassInStorage = freshClasses.find(
+      (c) => c.id === selectedClassId || c.classNumber === Number(classNumber)
+    );
+
+    let newlyFoundCount = 0;
+    const updatedRecs: Record<string, AttendanceStatus> = { ...records };
+
+    students.forEach((s) => {
+      // Check if logged in in storage (by ID or normalized name)
+      const directLogin = freshLogins[s.id];
+      const sNorm = normalizeString(s.name);
+      const nameLogin = Object.values(freshLogins).find(
+        (l) => normalizeString(l.studentName) === sNorm
+      );
+      const hasLogin = !!directLogin || !!nameLogin;
+
+      // Check if marked present in class session in storage
+      const classRecordPresent = currentClassInStorage?.records?.[s.id] === 'present';
+
+      if (hasLogin || classRecordPresent) {
+        if (updatedRecs[s.id] !== 'present') {
+          updatedRecs[s.id] = 'present';
+          newlyFoundCount++;
         }
-      });
-      return updated;
+      } else if (!updatedRecs[s.id]) {
+        updatedRecs[s.id] = 'absent';
+      }
     });
+
+    setRecords(updatedRecs);
+    const nowTime = new Date().toLocaleTimeString('pt-BR');
+    setLastSyncTime(nowTime);
+
+    // Save updated session to keep persistence in sync
+    const existingClass = sortedClasses.find((c) => c.id === selectedClassId || c.classNumber === Number(classNumber));
+    const targetId = existingClass ? existingClass.id : (selectedClassId !== 'new' ? selectedClassId : `class-${Date.now()}`);
+
+    const newSession: ClassSession = {
+      id: targetId,
+      classNumber: Number(classNumber),
+      date,
+      startTime,
+      endTime,
+      durationMinutes,
+      minRequiredMinutes,
+      topic: topic.trim() || getDefaultTopicForClass(Number(classNumber)),
+      description: description.trim() || `Registro de presença da Aula #${classNumber}.`,
+      instructor: instructor.trim() || 'Professor Rogério Augusto Fernandes',
+      records: updatedRecs,
+      recordNotes,
+      isClosed: existingClass?.isClosed || false,
+      createdAt: existingClass?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    onSaveClass(newSession);
+
+    const totalPresent = students.filter((s) => updatedRecs[s.id] === 'present').length;
 
     setTimeout(() => {
       setIsSyncing(false);
-      setConfrontFeedback(
-        `Check-ins em tempo real sincronizados! ${Object.keys(freshLogins).length} aluno(s) com login/check-in ativo.`
-      );
+      let feedback = '';
+      if (newlyFoundCount > 0) {
+        feedback = `Sincronização concluída (${nowTime}): ${newlyFoundCount} novo(s) check-in(s) detectado(s)! Total de presentes: ${totalPresent}.`;
+      } else if (totalPresent > 0) {
+        feedback = `Verificação realizada (${nowTime}): ${totalPresent} aluno(s) com presença confirmada em tempo real.`;
+      } else {
+        feedback = `Verificação realizada às ${nowTime}: Nenhum aluno efetuou check-in até o momento. Aguardando acessos dos alunos.`;
+      }
+
+      setConfrontFeedback(feedback);
+      if (totalPresent > 0) {
+        setListFilterTab('present');
+      }
+      setTimeout(() => setConfrontFeedback(null), 5000);
+    }, 450);
+  };
+
+  // Simulate student check-in for instant testing
+  const handleSimulateStudentCheckIn = () => {
+    const pendingStudent = sortedStudents.find((s) => records[s.id] !== 'present');
+    if (!pendingStudent) {
+      setConfrontFeedback('Todos os alunos já estão com presença confirmada nesta aula!');
       setTimeout(() => setConfrontFeedback(null), 4000);
-    }, 400);
+      return;
+    }
+
+    recordStudentLogin(pendingStudent.id, pendingStudent.name);
+    const updatedRecs: Record<string, AttendanceStatus> = {
+      ...records,
+      [pendingStudent.id]: 'present',
+    };
+    setRecords(updatedRecs);
+    syncLogins();
+
+    const existingClass = sortedClasses.find((c) => c.id === selectedClassId || c.classNumber === Number(classNumber));
+    const targetId = existingClass ? existingClass.id : (selectedClassId !== 'new' ? selectedClassId : `class-${Date.now()}`);
+
+    const newSession: ClassSession = {
+      id: targetId,
+      classNumber: Number(classNumber),
+      date,
+      startTime,
+      endTime,
+      durationMinutes,
+      minRequiredMinutes,
+      topic: topic.trim() || getDefaultTopicForClass(Number(classNumber)),
+      description: description.trim() || `Registro de presença da Aula #${classNumber}.`,
+      instructor: instructor.trim() || 'Professor Rogério Augusto Fernandes',
+      records: updatedRecs,
+      recordNotes,
+      isClosed: existingClass?.isClosed || false,
+      createdAt: existingClass?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    onSaveClass(newSession);
+
+    const nowTime = new Date().toLocaleTimeString('pt-BR');
+    setLastSyncTime(nowTime);
+    setConfrontFeedback(`Check-in simulado com sucesso para ${pendingStudent.name}! Presença registrada às ${nowTime}.`);
+    setListFilterTab('present');
+    setTimeout(() => setConfrontFeedback(null), 5000);
   };
 
   // Encerrar Chamada: Consolidar presenças e lançar faltas automáticas para quem não fez check-in
@@ -339,10 +444,10 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
     }, 6000);
   };
 
-  // Calculate live counts
-  const presentCount = Object.values(records).filter((s) => s === 'present').length;
-  const absentCount = Object.values(records).filter((s) => s === 'absent').length;
-  const justifiedCount = Object.values(records).filter((s) => s === 'justified').length;
+  // Calculate live counts based on the actual student roster
+  const presentCount = sortedStudents.filter((s) => records[s.id] === 'present').length;
+  const justifiedCount = sortedStudents.filter((s) => records[s.id] === 'justified').length;
+  const absentCount = sortedStudents.filter((s) => !records[s.id] || records[s.id] === 'absent').length;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -929,24 +1034,47 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
                   <p className="text-xs text-slate-400 leading-relaxed">
                     A lista de presenças inicia <strong>vazia</strong>. Conforme os alunos acessarem a plataforma pelo celular ou computador e clicarem em <strong>"Registrar Presença"</strong>, seus nomes aparecerão aqui automaticamente.
                   </p>
+                  {lastSyncTime && (
+                    <p className="text-[11px] text-indigo-300/90 font-mono pt-1">
+                      Última verificação: {lastSyncTime}
+                    </p>
+                  )}
                 </div>
 
-                <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-2">
+                <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-2 flex-wrap">
                   <button
                     type="button"
                     onClick={() => setListFilterTab('pending')}
-                    className="px-3.5 py-2 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl transition-all cursor-pointer"
+                    id="empty-view-pending-btn"
+                    className="px-3.5 py-2 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
                   >
-                    Ver Alunos Aguardando ({absentCount})
+                    <UserX className="w-3.5 h-3.5 text-amber-300" />
+                    <span>Ver Alunos Aguardando ({absentCount})</span>
                   </button>
+
                   <button
                     type="button"
                     onClick={handleSyncCheckInsNow}
-                    className="px-3.5 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+                    id="empty-sync-btn"
+                    disabled={isSyncing}
+                    className="px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-md shadow-indigo-600/30 disabled:opacity-60"
                   >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    <span>Verificar Entradas Agora</span>
+                    <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-indigo-200' : ''}`} />
+                    <span>{isSyncing ? 'Verificando Entradas...' : 'Verificar Entradas Agora'}</span>
                   </button>
+
+                  {absentCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleSimulateStudentCheckIn}
+                      id="empty-simulate-btn"
+                      className="px-3.5 py-2 text-xs font-semibold bg-emerald-950/80 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-700/60 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+                      title="Simula a entrada de 1 aluno para testar o funcionamento do check-in em tempo real"
+                    >
+                      <Zap className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
+                      <span>Simular Check-in (Teste)</span>
+                    </button>
+                  )}
                 </div>
               </div>
             ) : (
