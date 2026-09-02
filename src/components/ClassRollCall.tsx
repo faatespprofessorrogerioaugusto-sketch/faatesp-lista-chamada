@@ -1009,10 +1009,10 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
                 }`}
               >
                 <UserCheck className="w-3.5 h-3.5 text-emerald-300" />
-                <span>Check-in Realizado ({presentCount})</span>
+                <span>Presentes ({presentCount})</span>
               </button>
 
-              {/* Tab 3: Aguardando Check-in / Faltantes */}
+              {/* Tab 3: Ausentes / Faltas */}
               <button
                 type="button"
                 onClick={() => setListFilterTab('pending')}
@@ -1024,14 +1024,14 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
                 }`}
               >
                 <UserX className="w-3.5 h-3.5 text-rose-300" />
-                <span>Faltantes / Aguardando ({absentCount})</span>
+                <span>Ausentes ({absentCount})</span>
               </button>
             </div>
 
             <div className="flex items-center gap-2 text-xs text-slate-400">
               <span className="inline-flex items-center gap-1 bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20 text-[11px]">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                Modo: Check-in em Tempo Real
+                Modo: Presença em Tempo Real (A-Z)
               </span>
             </div>
           </div>
@@ -1043,17 +1043,17 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
                 Nenhum aluno cadastrado no sistema. Adicione alunos na aba "Gestão de Alunos".
               </div>
             ) : listFilterTab === 'present' && presentCount === 0 ? (
-              /* EMPTY STATE: Aguardando alunos entrarem e marcarem presença */
+              /* EMPTY STATE */
               <div className="p-8 text-center space-y-3 max-w-md mx-auto">
                 <div className="w-12 h-12 rounded-2xl bg-indigo-950/60 border border-indigo-800/60 flex items-center justify-center mx-auto text-indigo-400 shadow-sm">
                   <Radio className="w-6 h-6 animate-pulse text-indigo-400" />
                 </div>
                 <div className="space-y-1">
                   <h4 className="text-sm font-bold text-slate-100">
-                    Aguardando Check-in dos Alunos
+                    Nenhuma Presença Confirmada Nesta Aula
                   </h4>
                   <p className="text-xs text-slate-400">
-                    Nenhum aluno confirmou presença ainda. Conforme fizerem login e confirmarem presença, seus nomes aparecerão aqui automaticamente em ordem alfabética.
+                    Conforme os alunos realizarem login ou o professor confirmar a presença, os nomes aparecerão aqui em ordem alfabética.
                   </p>
                 </div>
                 <button
@@ -1104,10 +1104,15 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                                 Presença Confirmada {loginData?.loginTime ? `(${loginData.loginTime})` : ''}
                               </span>
+                            ) : currentStatus === 'justified' ? (
+                              <span className="bg-amber-500/10 text-amber-400 border border-amber-500/30 text-[10px] font-semibold px-2 py-0.5 rounded-md flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                                Falta Justificada
+                              </span>
                             ) : (
                               <span className="bg-rose-500/10 text-rose-400 border border-rose-500/30 text-[10px] font-semibold px-2 py-0.5 rounded-md flex items-center gap-1">
                                 <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                                Aguardando Check-in (Ausente)
+                                Ausente (Falta Registrada)
                               </span>
                             )}
                           </div>
