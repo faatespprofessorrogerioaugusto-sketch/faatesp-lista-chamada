@@ -51,12 +51,13 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
   const [description, setDescription] = useState<string>('');
   const [instructor, setInstructor] = useState<string>('Professor Rogério Augusto Fernandes');
 
-  // Attendance Records: studentId -> status
+  // Attendance Records: studentId -> status (starts empty for new classes, only filled as students register)
   const [records, setRecords] = useState<Record<string, AttendanceStatus>>({});
   const [recordNotes, setRecordNotes] = useState<Record<string, string>>({});
 
-  // List View Filter for Check-in em Tempo Real (default to 'all' so both present and absent students are visible)
-  const [listFilterTab, setListFilterTab] = useState<'all' | 'present' | 'pending'>('all');
+  // Tab View for Roll Call: 'present' is default so the list is empty until students check in
+  const [listFilterTab, setListFilterTab] = useState<'present' | 'pending' | 'absent'>('present');
+  const [searchRosterTerm, setSearchRosterTerm] = useState<string>('');
 
   // Student Logins Tracking & Confrontation
   const [studentLogins, setStudentLogins] = useState<Record<string, StudentLoginRecord>>({});
@@ -90,10 +91,22 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
 
       setStudentLogins(currentLogins);
 
+      // Only synchronize records from storage or newly logged in students; do NOT force absent status
       setRecords((prev) => {
         let changed = false;
         const updated = { ...prev };
 
+        // Pull stored records
+        if (currentClassInStorage?.records) {
+          Object.entries(currentClassInStorage.records).forEach(([id, status]) => {
+            if (updated[id] !== status) {
+              updated[id] = status;
+              changed = true;
+            }
+          });
+        }
+
+        // Real-time check: if student logged in and this class is open, record their presence
         students.forEach((s) => {
           const directLogin = currentLogins[s.id];
           const sNorm = normalizeString(s.name);
@@ -101,10 +114,9 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
             (l) => normalizeString(l.studentName) === sNorm
           );
           const hasLogin = !!directLogin || !!nameLogin;
-          const classRecordPresent = currentClassInStorage?.records?.[s.id] === 'present';
 
-          if (hasLogin || classRecordPresent) {
-            if (updated[s.id] !== 'present') {
+          if (hasLogin && (!currentClassInStorage || !currentClassInStorage.isClosed)) {
+            if (updated[s.id] !== 'present' && updated[s.id] !== 'justified') {
               updated[s.id] = 'present';
               changed = true;
             }
@@ -189,14 +201,10 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
       setDescription(`Registro de presença da Aula #${nextClassNum} de Consultoria Organizacional.`);
       setInstructor('Professor Rogério Augusto Fernandes');
 
-      // Confront registered students with logins:
-      // Students who logged in -> 'present', Students who didn't log in -> 'absent'
-      const initialRecs: Record<string, AttendanceStatus> = {};
-      students.forEach((s) => {
-        initialRecs[s.id] = currentLogins[s.id] ? 'present' : 'absent';
-      });
-      setRecords(initialRecs);
+      // DO NOT pre-fill student list! Starts empty, populated only as students register presence
+      setRecords({});
       setRecordNotes({});
+      setListFilterTab('present');
       return;
     }
 
@@ -212,16 +220,10 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
       setDescription(targetClass.description || '');
       setInstructor(targetClass.instructor || 'Professor Rogério Augusto Fernandes');
 
-      // Merge students with saved records
-      const currentRecs = { ...(targetClass.records || {}) };
-      students.forEach((s) => {
-        if (!currentRecs[s.id]) {
-          // If no record exists yet, check if student logged in
-          currentRecs[s.id] = currentLogins[s.id] ? 'present' : 'absent';
-        }
-      });
-      setRecords(currentRecs);
+      // Only load records explicitly registered for this class
+      setRecords(targetClass.records || {});
       setRecordNotes(targetClass.recordNotes || {});
+      setListFilterTab('present');
     }
   }, [selectedClassId, existingClasses, students]);
 
@@ -448,38 +450,62 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
     }, 7000);
   };
 
-  // Confrontation: Cross-reference registered students with system logins
+  // Confrontation: Add logged in students to presence without forcing absent status on others
   const handleConfrontLogins = () => {
     const currentLogins = loadStudentLogins();
     setStudentLogins(currentLogins);
-    const newRecs: Record<string, AttendanceStatus> = {};
-    let loggedInCount = 0;
-    let absentCountCalc = 0;
+    let newlyFoundCount = 0;
 
-    students.forEach((s) => {
-      if (currentLogins[s.id]) {
-        newRecs[s.id] = 'present';
-        loggedInCount++;
-      } else {
-        newRecs[s.id] = 'absent';
-        absentCountCalc++;
-      }
+    setRecords((prev) => {
+      const updated = { ...prev };
+      students.forEach((s) => {
+        const directLogin = currentLogins[s.id];
+        const sNorm = normalizeString(s.name);
+        const nameLogin = Object.values(currentLogins).find(
+          (l) => normalizeString(l.studentName) === sNorm
+        );
+        if ((directLogin || nameLogin) && updated[s.id] !== 'present') {
+          updated[s.id] = 'present';
+          newlyFoundCount++;
+        }
+      });
+      return updated;
     });
 
-    setRecords(newRecs);
     setConfrontFeedback(
-      `Confronto realizado com sucesso! ${loggedInCount} aluno(s) com login marcados como Presentes e ${absentCountCalc} aluno(s) sem login definidos automaticamente como Ausentes.`
+      newlyFoundCount > 0
+        ? `Sincronização concluída! ${newlyFoundCount} novo(s) check-in(s) registrado(s) na chamada.`
+        : 'Verificação concluída: Nenhum novo login de aluno detectado no momento.'
     );
 
     setTimeout(() => {
       setConfrontFeedback(null);
-    }, 6000);
+    }, 5000);
   };
 
-  // Calculate live counts based on the actual student roster
-  const presentCount = sortedStudents.filter((s) => records[s.id] === 'present').length;
-  const justifiedCount = sortedStudents.filter((s) => records[s.id] === 'justified').length;
-  const absentCount = sortedStudents.filter((s) => !records[s.id] || records[s.id] === 'absent').length;
+  // Individual Student Manual Actions
+  const handleMarkStudentPresent = (studentId: string) => {
+    setRecords((prev) => ({ ...prev, [studentId]: 'present' }));
+  };
+
+  const handleRemovePresence = (studentId: string) => {
+    setRecords((prev) => {
+      const copy = { ...prev };
+      delete copy[studentId];
+      return copy;
+    });
+  };
+
+  // Live counts based on registered records
+  const presentStudents = sortedStudents.filter((s) => records[s.id] === 'present');
+  const justifiedStudents = sortedStudents.filter((s) => records[s.id] === 'justified');
+  const absentStudents = sortedStudents.filter((s) => records[s.id] === 'absent');
+  const pendingStudents = sortedStudents.filter((s) => !records[s.id]);
+
+  const presentCount = presentStudents.length;
+  const justifiedCount = justifiedStudents.length;
+  const absentCount = absentStudents.length;
+  const pendingCount = pendingStudents.length;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -507,7 +533,7 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
       instructor: instructor.trim(),
       records,
       recordNotes,
-      isClosed: true,
+      isClosed: existingClass?.isClosed || false,
       createdAt: existingClass?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -517,7 +543,7 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
     setIsSaving(false);
     setSavedSuccess(true);
     setSaveSuccessMessage(
-      `Chamada da Aula #${classNumber} salva com sucesso! (${formatDateDisplay(date)} • ${presentCount} Presentes, ${absentCount} Ausentes, ${justifiedCount} Justificados)`
+      `Chamada da Aula #${classNumber} salva com sucesso! (${formatDateDisplay(date)} • ${presentCount} Presente(s) registrado(s))`
     );
 
     setTimeout(() => {
@@ -624,7 +650,7 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
             {selectedClassId === 'new' ? `Lançamento de Chamada - Aula #${classNumber}` : `Aula #${classNumber} - ${topic || 'Consultoria Organizacional'}`}
           </h2>
           <p className="text-sm text-slate-400 mt-0.5">
-            Preencha a data e marque a presença, falta ou justificativa dos {students.length} alunos cadastrados.
+            A lista de presença é preenchida automaticamente conforme cada aluno fizer login no sistema e confirmar presença nesta aula.
           </p>
         </div>
       </div>
@@ -895,7 +921,7 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
           <div className="flex items-center gap-6 flex-wrap">
             <div className="text-center lg:text-left">
               <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">
-                Total Alunos
+                Total Alunos Matriculados
               </span>
               <span className="text-xl font-extrabold text-white">{students.length}</span>
             </div>
@@ -906,65 +932,64 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
               <div className="bg-emerald-950/80 border border-emerald-800/60 px-3.5 py-1.5 rounded-xl text-center shadow-xs">
                 <span className="text-[10px] text-emerald-400 uppercase font-bold block flex items-center justify-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  Presentes / Check-in (P)
+                  Presenças Confirmadas (P)
                 </span>
                 <span className="text-lg font-black text-emerald-300">{presentCount}</span>
               </div>
 
-              <div className="bg-rose-950/80 border border-rose-800/60 px-3.5 py-1.5 rounded-xl text-center shadow-xs">
-                <span className="text-[10px] text-rose-400 uppercase font-bold block">
-                  Aguardando / Ausentes (A)
+              <div className="bg-slate-800/80 border border-slate-700/60 px-3.5 py-1.5 rounded-xl text-center shadow-xs">
+                <span className="text-[10px] text-slate-400 uppercase font-bold block">
+                  Aguardando Check-in
                 </span>
-                <span className="text-lg font-black text-rose-300">{absentCount}</span>
+                <span className="text-lg font-black text-slate-300">{pendingCount}</span>
               </div>
 
-              <div className="bg-amber-950/80 border border-amber-800/60 px-3.5 py-1.5 rounded-xl text-center shadow-xs">
-                <span className="text-[10px] text-amber-400 uppercase font-bold block">Justificados (J)</span>
-                <span className="text-lg font-black text-amber-300">{justifiedCount}</span>
-              </div>
+              {justifiedCount > 0 && (
+                <div className="bg-amber-950/80 border border-amber-800/60 px-3.5 py-1.5 rounded-xl text-center shadow-xs">
+                  <span className="text-[10px] text-amber-400 uppercase font-bold block">Justificados (J)</span>
+                  <span className="text-lg font-black text-amber-300">{justifiedCount}</span>
+                </div>
+              )}
+
+              {absentCount > 0 && (
+                <div className="bg-rose-950/80 border border-rose-800/60 px-3.5 py-1.5 rounded-xl text-center shadow-xs">
+                  <span className="text-[10px] text-rose-400 uppercase font-bold block">Faltas Gravadas (A)</span>
+                  <span className="text-lg font-black text-rose-300">{absentCount}</span>
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Quick Mark & Close Call Buttons */}
+          {/* Quick Actions */}
           <div className="flex items-center gap-2 w-full lg:w-auto justify-end flex-wrap">
             {/* Live Auto-sync Status Indicator */}
             <div className="px-3 py-1.5 text-xs font-semibold bg-slate-800 text-emerald-400 border border-emerald-500/30 rounded-xl flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>Sincronização Automática (A-Z)</span>
+              <span>Sincronização em Tempo Real Ativa</span>
             </div>
 
-            {/* CLOSE CALL BUTTON (Lançar faltas para quem não fez check-in) */}
+            {/* Test Simulation Button */}
+            <button
+              type="button"
+              onClick={handleSimulateStudentCheckIn}
+              id="simulate-checkin-btn"
+              className="px-3 py-1.5 text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+              title="Simular check-in de aluno para teste"
+            >
+              <Radio className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Simular Check-in (Teste)</span>
+            </button>
+
+            {/* CLOSE CALL BUTTON */}
             <button
               type="button"
               onClick={handleCloseCallAndMarkAbsences}
               id="close-call-btn"
               className="px-3.5 py-2 text-xs font-black bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl transition-all shadow-md shadow-indigo-600/30 flex items-center gap-1.5 cursor-pointer"
-              title="Encerrar a chamada: confirma os presentes e grava automaticamente ausência (falta) para quem não fez check-in"
+              title="Encerrar a chamada: confirma os presentes e grava automaticamente falta para quem não registrou presença"
             >
               <Zap className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
               <span>Encerrar Chamada & Gravar Faltas</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleMarkAll('present')}
-              id="mark-all-present-btn"
-              className="px-2.5 py-2 text-xs font-semibold bg-emerald-700/80 hover:bg-emerald-600 text-white rounded-xl transition-colors cursor-pointer flex items-center gap-1"
-              title="Marcar todos como presentes manualmente"
-            >
-              <Check className="w-3.5 h-3.5" />
-              <span>Todos (P)</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleMarkAll('absent')}
-              id="mark-all-absent-btn"
-              className="px-2.5 py-2 text-xs font-semibold bg-rose-700/80 hover:bg-rose-600 text-white rounded-xl transition-colors cursor-pointer flex items-center gap-1"
-              title="Marcar todos como ausentes manualmente"
-            >
-              <XCircle className="w-3.5 h-3.5" />
-              <span>Todos (A)</span>
             </button>
           </div>
         </div>
@@ -977,27 +1002,12 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
           </div>
         )}
 
-        {/* Check-in em Tempo Real Tabs & Student List Table */}
+        {/* Dynamic Attendance List Table */}
         <div className="bg-slate-900/80 rounded-2xl border border-slate-800 shadow-xs overflow-hidden">
           {/* Filter Tabs Header */}
           <div className="p-4 bg-slate-800/80 border-b border-slate-700/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div className="flex items-center gap-2 flex-wrap">
-              {/* Tab 1: Todos os Alunos (A-Z) */}
-              <button
-                type="button"
-                onClick={() => setListFilterTab('all')}
-                id="filter-tab-all"
-                className={`px-3.5 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
-                  listFilterTab === 'all'
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30 ring-2 ring-indigo-400/40'
-                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
-                }`}
-              >
-                <Users className="w-3.5 h-3.5 text-indigo-300" />
-                <span>Todos os Alunos ({sortedStudents.length})</span>
-              </button>
-
-              {/* Tab 2: Presentes / Check-in Realizado */}
+              {/* Tab 1: Presentes / Check-in Realizado (Default View) */}
               <button
                 type="button"
                 onClick={() => setListFilterTab('present')}
@@ -1009,183 +1019,236 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
                 }`}
               >
                 <UserCheck className="w-3.5 h-3.5 text-emerald-300" />
-                <span>Presentes ({presentCount})</span>
+                <span>Presenças Confirmadas ({presentCount})</span>
               </button>
 
-              {/* Tab 3: Ausentes / Faltas */}
+              {/* Tab 2: Aguardando Check-in */}
               <button
                 type="button"
                 onClick={() => setListFilterTab('pending')}
                 id="filter-tab-pending"
                 className={`px-3.5 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
                   listFilterTab === 'pending'
-                    ? 'bg-rose-600 text-white shadow-md shadow-rose-600/30 ring-2 ring-rose-400/40'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30 ring-2 ring-indigo-400/40'
                     : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
                 }`}
               >
-                <UserX className="w-3.5 h-3.5 text-rose-300" />
-                <span>Ausentes ({absentCount})</span>
+                <Clock className="w-3.5 h-3.5 text-indigo-300" />
+                <span>Aguardando Check-in ({pendingCount})</span>
               </button>
+
+              {/* Tab 3: Faltas Gravadas (if any) */}
+              {absentCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setListFilterTab('absent')}
+                  id="filter-tab-absent"
+                  className={`px-3.5 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+                    listFilterTab === 'absent'
+                      ? 'bg-rose-600 text-white shadow-md shadow-rose-600/30 ring-2 ring-rose-400/40'
+                      : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
+                  }`}
+                >
+                  <UserX className="w-3.5 h-3.5 text-rose-300" />
+                  <span>Faltas Gravadas ({absentCount})</span>
+                </button>
+              )}
             </div>
 
-            <div className="flex items-center gap-2 text-xs text-slate-400">
-              <span className="inline-flex items-center gap-1 bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20 text-[11px]">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                Modo: Presença em Tempo Real (A-Z)
-              </span>
+            {/* Quick Search */}
+            <div className="w-full sm:w-64">
+              <input
+                type="text"
+                value={searchRosterTerm}
+                onChange={(e) => setSearchRosterTerm(e.target.value)}
+                placeholder="Filtrar por nome ou matrícula..."
+                className="w-full text-xs px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-xl text-slate-200 placeholder-slate-500 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              />
             </div>
           </div>
 
           {/* List Content */}
           <div className="divide-y divide-slate-800/80">
-            {sortedStudents.length === 0 ? (
-              <div className="p-8 text-center text-slate-500">
-                Nenhum aluno cadastrado no sistema. Adicione alunos na aba "Gestão de Alunos".
-              </div>
-            ) : listFilterTab === 'present' && presentCount === 0 ? (
-              /* EMPTY STATE */
-              <div className="p-8 text-center space-y-3 max-w-md mx-auto">
-                <div className="w-12 h-12 rounded-2xl bg-indigo-950/60 border border-indigo-800/60 flex items-center justify-center mx-auto text-indigo-400 shadow-sm">
-                  <Radio className="w-6 h-6 animate-pulse text-indigo-400" />
+            {listFilterTab === 'present' ? (
+              /* TAB 1: PRESENTES (Starts empty on new class, fills on login) */
+              presentCount === 0 ? (
+                <div className="p-12 text-center space-y-4 max-w-lg mx-auto">
+                  <div className="w-14 h-14 rounded-2xl bg-emerald-950/60 border border-emerald-800/60 flex items-center justify-center mx-auto text-emerald-400 shadow-sm">
+                    <Radio className="w-7 h-7 animate-pulse text-emerald-400" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <h4 className="text-base font-bold text-slate-100">
+                      Aguardando Registro de Presença dos Alunos
+                    </h4>
+                    <p className="text-xs text-slate-400 leading-relaxed">
+                      Nenhum aluno registrou presença nesta aula ainda. Conforme cada aluno fizer login no sistema e confirmar presença, seu nome será adicionado aqui automaticamente em tempo real.
+                    </p>
+                  </div>
+                  <div className="pt-2 flex items-center justify-center gap-2 text-[11px] text-slate-500">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <span>A chamada inicia sem lista pré-preenchida para garantir registro autêntico.</span>
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  <h4 className="text-sm font-bold text-slate-100">
-                    Nenhuma Presença Confirmada Nesta Aula
-                  </h4>
-                  <p className="text-xs text-slate-400">
-                    Conforme os alunos realizarem login ou o professor confirmar a presença, os nomes aparecerão aqui em ordem alfabética.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setListFilterTab('all')}
-                  className="px-3.5 py-1.5 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl transition-all cursor-pointer inline-flex items-center gap-1.5 mt-2"
-                >
-                  <Users className="w-3.5 h-3.5 text-indigo-300" />
-                  <span>Ver Todos os Alunos (A-Z)</span>
-                </button>
-              </div>
-            ) : (
-              /* STUDENT ROWS BASED ON ACTIVE FILTER */
-              sortedStudents
-                .filter((student) => {
-                  const currentStatus = records[student.id] || 'absent';
-                  if (listFilterTab === 'present') return currentStatus === 'present';
-                  if (listFilterTab === 'pending') return currentStatus !== 'present';
-                  return true; // 'all'
-                })
-                .map((student, idx) => {
-                  const currentStatus = records[student.id] || 'absent';
-                  const currentNote = recordNotes[student.id] || '';
-                  const isLogged = !!studentLogins[student.id];
-                  const loginData = studentLogins[student.id];
+              ) : (
+                presentStudents
+                  .filter(
+                    (s) =>
+                      s.name.toLowerCase().includes(searchRosterTerm.toLowerCase()) ||
+                      (s.registrationId && s.registrationId.toLowerCase().includes(searchRosterTerm.toLowerCase()))
+                  )
+                  .map((student, idx) => {
+                    const currentNote = recordNotes[student.id] || '';
+                    const loginData = studentLogins[student.id];
 
-                  return (
+                    return (
+                      <div
+                        key={student.id}
+                        className="p-4 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-slate-800/40"
+                      >
+                        {/* Student Info */}
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs font-mono font-bold text-slate-500 w-6 text-right">
+                            {idx + 1}.
+                          </span>
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-bold text-slate-100 text-sm">{student.name}</span>
+                              <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[10px] font-semibold px-2.5 py-0.5 rounded-md flex items-center gap-1">
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                Presença Confirmada (P) {loginData?.loginTime ? `• às ${loginData.loginTime}` : ''}
+                              </span>
+                            </div>
+                            <div className="text-xs text-slate-400 font-mono">
+                              {student.registrationId ? `Matrícula: ${student.registrationId}` : 'Sem matrícula'}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Adjust Actions */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => handleStatusChange(student.id, 'justified')}
+                            className="px-2.5 py-1 text-[11px] font-semibold text-amber-300 bg-amber-950/40 hover:bg-amber-900/60 border border-amber-800/50 rounded-lg transition-colors cursor-pointer"
+                          >
+                            Justificar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRemovePresence(student.id)}
+                            className="px-2.5 py-1 text-[11px] font-semibold text-rose-300 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/50 rounded-lg transition-colors cursor-pointer"
+                            title="Remover presença do aluno (retorna para aguardando)"
+                          >
+                            Remover
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+              )
+            ) : listFilterTab === 'pending' ? (
+              /* TAB 2: AGUARDANDO CHECK-IN */
+              pendingCount === 0 ? (
+                <div className="p-8 text-center text-slate-400 text-xs">
+                  🎉 Todos os {students.length} alunos já registraram presença nesta aula!
+                </div>
+              ) : (
+                pendingStudents
+                  .filter(
+                    (s) =>
+                      s.name.toLowerCase().includes(searchRosterTerm.toLowerCase()) ||
+                      (s.registrationId && s.registrationId.toLowerCase().includes(searchRosterTerm.toLowerCase()))
+                  )
+                  .map((student, idx) => (
                     <div
                       key={student.id}
-                      className={`p-4 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-4 ${
-                        currentStatus === 'present'
-                          ? 'hover:bg-slate-800/40'
-                          : currentStatus === 'absent'
-                          ? 'bg-rose-950/15'
-                          : 'bg-amber-950/15'
-                      }`}
+                      className="p-4 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-slate-800/30"
                     >
-                      {/* Student Info */}
                       <div className="flex items-center gap-3">
                         <span className="text-xs font-mono font-bold text-slate-500 w-6 text-right">
                           {idx + 1}.
                         </span>
                         <div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-bold text-slate-100 text-sm">{student.name}</span>
-                            {currentStatus === 'present' ? (
-                              <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[10px] font-semibold px-2 py-0.5 rounded-md flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                                Presença Confirmada {loginData?.loginTime ? `(${loginData.loginTime})` : ''}
-                              </span>
-                            ) : currentStatus === 'justified' ? (
-                              <span className="bg-amber-500/10 text-amber-400 border border-amber-500/30 text-[10px] font-semibold px-2 py-0.5 rounded-md flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                                Falta Justificada
-                              </span>
-                            ) : (
-                              <span className="bg-rose-500/10 text-rose-400 border border-rose-500/30 text-[10px] font-semibold px-2 py-0.5 rounded-md flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                                Ausente (Falta Registrada)
-                              </span>
-                            )}
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-slate-200 text-sm">{student.name}</span>
+                            <span className="bg-slate-800 text-slate-400 border border-slate-700 text-[10px] font-medium px-2 py-0.5 rounded-md">
+                              Aguardando Check-in
+                            </span>
                           </div>
-                          <div className="text-xs text-slate-400 font-mono">
+                          <div className="text-xs text-slate-500 font-mono">
                             {student.registrationId ? `Matrícula: ${student.registrationId}` : 'Sem matrícula'}
                           </div>
                         </div>
                       </div>
 
-                      {/* Status Toggle Radio Group & Manual Fast Mark */}
-                      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full md:w-auto">
-                        <div className="inline-flex rounded-xl p-1 bg-slate-800 border border-slate-700">
-                          {/* PRESENTE */}
-                          <button
-                            type="button"
-                            onClick={() => handleStatusChange(student.id, 'present')}
-                            id={`status-present-${student.id}`}
-                            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
-                              currentStatus === 'present'
-                                ? 'bg-emerald-600 text-white shadow-xs'
-                                : 'text-slate-400 hover:text-slate-200'
-                            }`}
-                          >
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            <span>Presente</span>
-                          </button>
-
-                          {/* AUSENTE */}
-                          <button
-                            type="button"
-                            onClick={() => handleStatusChange(student.id, 'absent')}
-                            id={`status-absent-${student.id}`}
-                            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
-                              currentStatus === 'absent'
-                                ? 'bg-rose-600 text-white shadow-xs'
-                                : 'text-slate-400 hover:text-slate-200'
-                            }`}
-                          >
-                            <XCircle className="w-3.5 h-3.5" />
-                            <span>Ausente</span>
-                          </button>
-
-                          {/* JUSTIFICADO */}
-                          <button
-                            type="button"
-                            onClick={() => handleStatusChange(student.id, 'justified')}
-                            id={`status-justified-${student.id}`}
-                            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
-                              currentStatus === 'justified'
-                                ? 'bg-amber-500 text-white shadow-xs'
-                                : 'text-slate-400 hover:text-slate-200'
-                            }`}
-                          >
-                            <AlertCircle className="w-3.5 h-3.5" />
-                            <span>Justificado</span>
-                          </button>
+                      {/* Manual Add Button for Individual Exception */}
+                      <button
+                        type="button"
+                        onClick={() => handleMarkStudentPresent(student.id)}
+                        id={`manual-mark-${student.id}`}
+                        className="px-3 py-1.5 text-xs font-semibold bg-indigo-600/80 hover:bg-indigo-500 text-white rounded-xl transition-all flex items-center gap-1.5 cursor-pointer self-end md:self-auto"
+                        title="Registrar presença manual para este aluno"
+                      >
+                        <UserCheck className="w-3.5 h-3.5" />
+                        <span>+ Registrar Presença Manual</span>
+                      </button>
+                    </div>
+                  ))
+              )
+            ) : (
+              /* TAB 3: FALTAS GRAVADAS */
+              absentCount === 0 ? (
+                <div className="p-8 text-center text-slate-400 text-xs">
+                  Nenhuma falta gravada nesta aula.
+                </div>
+              ) : (
+                absentStudents
+                  .filter(
+                    (s) =>
+                      s.name.toLowerCase().includes(searchRosterTerm.toLowerCase()) ||
+                      (s.registrationId && s.registrationId.toLowerCase().includes(searchRosterTerm.toLowerCase()))
+                  )
+                  .map((student, idx) => (
+                    <div
+                      key={student.id}
+                      className="p-4 bg-rose-950/15 flex flex-col md:flex-row md:items-center justify-between gap-4"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs font-mono font-bold text-slate-500 w-6 text-right">
+                          {idx + 1}.
+                        </span>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-slate-200 text-sm">{student.name}</span>
+                            <span className="bg-rose-500/10 text-rose-400 border border-rose-500/30 text-[10px] font-semibold px-2 py-0.5 rounded-md">
+                              Falta Registrada
+                            </span>
+                          </div>
+                          <div className="text-xs text-slate-500 font-mono">
+                            {student.registrationId ? `Matrícula: ${student.registrationId}` : 'Sem matrícula'}
+                          </div>
                         </div>
+                      </div>
 
-                        {/* Optional Note input for absence or justification */}
-                        {(currentStatus === 'absent' || currentStatus === 'justified') && (
-                          <input
-                            type="text"
-                            placeholder="Motivo / Observação (opcional)..."
-                            value={currentNote}
-                            onChange={(e) => handleNoteChange(student.id, e.target.value)}
-                            id={`note-input-${student.id}`}
-                            className="w-full sm:w-60 text-xs px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 text-slate-200 placeholder-slate-500"
-                          />
-                        )}
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleMarkStudentPresent(student.id)}
+                          className="px-2.5 py-1 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors cursor-pointer"
+                        >
+                          Converter em Presente
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleStatusChange(student.id, 'justified')}
+                          className="px-2.5 py-1 text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-white rounded-lg transition-colors cursor-pointer"
+                        >
+                          Justificar Falta
+                        </button>
                       </div>
                     </div>
-                  );
-                })
+                  ))
+              )
             )}
           </div>
         </div>

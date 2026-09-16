@@ -211,25 +211,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({ students, onLogin, onOpe
             />
           </div>
 
-          {/* Tipo de Usuário (Perfil) */}
-          <div>
-            <label htmlFor="login-role-select" className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
-              Perfil / Tipo de Usuário <span className="text-rose-400">*</span>
-            </label>
-            <select
-              id="login-role-select"
-              value={role}
-              onChange={(e) => {
-                setRole(e.target.value as UserRole);
-                setErrorMessage(null);
-              }}
-              className="w-full px-4 py-3 bg-slate-800 border border-slate-700 text-slate-100 font-bold rounded-xl focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 text-sm cursor-pointer transition-all"
-            >
-              <option value="Aluno">Aluno</option>
-              <option value="Professor">Professor</option>
-            </select>
-          </div>
-
           {/* E-mail (Exibido apenas para Aluno) */}
           {role === 'Aluno' && (
             <div>
@@ -258,6 +239,25 @@ export const LoginModal: React.FC<LoginModalProps> = ({ students, onLogin, onOpe
               />
             </div>
           )}
+
+          {/* Tipo de Usuário (Perfil) */}
+          <div>
+            <label htmlFor="login-role-select" className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
+              Perfil / Tipo de Usuário <span className="text-rose-400">*</span>
+            </label>
+            <select
+              id="login-role-select"
+              value={role}
+              onChange={(e) => {
+                setRole(e.target.value as UserRole);
+                setErrorMessage(null);
+              }}
+              className="w-full px-4 py-3 bg-slate-800 border border-slate-700 text-slate-100 font-bold rounded-xl focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 text-sm cursor-pointer transition-all"
+            >
+              <option value="Aluno">Aluno</option>
+              <option value="Professor">Professor</option>
+            </select>
+          </div>
 
           {/* Info Card according to selected role */}
           <div className="p-3.5 bg-slate-800/60 rounded-xl border border-slate-700/60 text-xs text-slate-400 flex items-start gap-2.5">
