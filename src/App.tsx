@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Student, ClassSession, UserSession, AttendanceStatus, StudentGrade, AppTab } from './types';
 import {
   loadStudents,
@@ -10,7 +10,19 @@ import {
   resetToDefaultData,
   recordStudentLogin,
 } from './utils/storage';
-import { exportToExcel } from './utils/excelUtils';
+import { exportToExcel, ImportResult } from './utils/excelUtils';
+import {
+  getStudentsFromCloud,
+  getClassesFromCloud,
+  getGradesFromCloud,
+  saveStudentsBatchToCloud,
+  saveClassesBatchToCloud,
+  saveGradesBatchToCloud,
+  subscribeToStudents,
+  subscribeToClasses,
+  subscribeToGrades,
+  clearAllCloudData,
+} from './services/cloudStorage';
 import { Navbar } from './components/Navbar';
 import { LoginModal } from './components/LoginModal';
 import { UnifiedDashboard } from './components/UnifiedDashboard';
@@ -28,6 +40,7 @@ export default function App() {
   const [grades, setGrades] = useState<Record<string, StudentGrade>>({});
   const [currentUser, setCurrentUser] = useState<UserSession | null>(null);
   const [activeTab, setActiveTab] = useState<AppTab>('dashboard');
+  const [isCloudSynced, setIsCloudSynced] = useState(false);
 
   // Navigation helpers
   const [selectedStudentForQuery, setSelectedStudentForQuery] = useState<string | null>(null);
@@ -37,48 +50,133 @@ export default function App() {
   const [isExcelModalOpen, setIsExcelModalOpen] = useState(false);
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
 
-  // Initial Load and Cross-Tab Real-Time Sync
+  // Refs to avoid feedback loops during real-time updates
+  const isSyncingFromCloud = useRef(false);
+
+  // Initial Cloud Load & Migration from localStorage if cloud is empty
   useEffect(() => {
-    const syncFromStorage = () => {
-      const loadedSt = loadStudents();
-      const loadedCl = loadClasses();
-      const loadedGr = loadGrades();
-      setStudents(loadedSt);
-      setClasses(loadedCl);
-      setGrades(loadedGr);
-    };
+    let unsubscribeStudents: (() => void) | undefined;
+    let unsubscribeClasses: (() => void) | undefined;
+    let unsubscribeGrades: (() => void) | undefined;
 
-    syncFromStorage();
+    async function initCloudData() {
+      try {
+        const [cloudStudents, cloudClasses, cloudGrades] = await Promise.all([
+          getStudentsFromCloud(),
+          getClassesFromCloud(),
+          getGradesFromCloud(),
+        ]);
 
-    const handleStorageChange = (e: StorageEvent) => {
-      if (
-        e.key === 'consultoria_classes_v7_clean' ||
-        e.key === 'consultoria_students_v7_clean' ||
-        e.key === 'consultoria_student_logins_v1' ||
-        e.key === 'consultoria_grades_v1'
-      ) {
-        syncFromStorage();
+        const localStudents = loadStudents();
+        const localClasses = loadClasses();
+        const localGrades = loadGrades();
+
+        let initialSt = cloudStudents;
+        let initialCl = cloudClasses;
+        let initialGr = cloudGrades;
+
+        // Auto-migration: If cloud is completely empty but local storage has data, upload local data to Firestore
+        if (cloudStudents.length === 0 && localStudents.length > 0) {
+          console.log('Migrating local students to cloud database...');
+          await saveStudentsBatchToCloud(localStudents);
+          initialSt = localStudents;
+        }
+
+        if (cloudClasses.length === 0 && localClasses.length > 0) {
+          console.log('Migrating local classes to cloud database...');
+          await saveClassesBatchToCloud(localClasses);
+          initialCl = localClasses;
+        }
+
+        if (Object.keys(cloudGrades).length === 0 && Object.keys(localGrades).length > 0) {
+          console.log('Migrating local grades to cloud database...');
+          await saveGradesBatchToCloud(localGrades);
+          initialGr = localGrades;
+        }
+
+        // Set state and backup to localStorage
+        setStudents(initialSt);
+        saveStudents(initialSt);
+
+        setClasses(initialCl);
+        saveClasses(initialCl);
+
+        setGrades(initialGr);
+        saveGrades(initialGr);
+
+        setIsCloudSynced(true);
+
+        // Set up real-time snapshot listeners
+        unsubscribeStudents = subscribeToStudents((newSt) => {
+          if (newSt.length > 0) {
+            isSyncingFromCloud.current = true;
+            setStudents(newSt);
+            saveStudents(newSt);
+            setTimeout(() => { isSyncingFromCloud.current = false; }, 200);
+          }
+        });
+
+        unsubscribeClasses = subscribeToClasses((newCl) => {
+          if (newCl.length > 0) {
+            isSyncingFromCloud.current = true;
+            setClasses(newCl);
+            saveClasses(newCl);
+            setTimeout(() => { isSyncingFromCloud.current = false; }, 200);
+          }
+        });
+
+        unsubscribeGrades = subscribeToGrades((newGr) => {
+          if (Object.keys(newGr).length > 0) {
+            isSyncingFromCloud.current = true;
+            setGrades(newGr);
+            saveGrades(newGr);
+            setTimeout(() => { isSyncingFromCloud.current = false; }, 200);
+          }
+        });
+
+      } catch (err) {
+        console.error('Error connecting to cloud database, using local backup:', err);
+        const fallbackSt = loadStudents();
+        const fallbackCl = loadClasses();
+        const fallbackGr = loadGrades();
+        setStudents(fallbackSt);
+        setClasses(fallbackCl);
+        setGrades(fallbackGr);
       }
-    };
+    }
 
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
+    initCloudData();
+
+    return () => {
+      if (unsubscribeStudents) unsubscribeStudents();
+      if (unsubscribeClasses) unsubscribeClasses();
+      if (unsubscribeGrades) unsubscribeGrades();
+    };
   }, []);
 
-  // Save changes
+  // Save changes to both local storage AND Firestore Cloud
   const updateStudents = (newStudents: Student[]) => {
     setStudents(newStudents);
     saveStudents(newStudents);
+    if (!isSyncingFromCloud.current) {
+      saveStudentsBatchToCloud(newStudents);
+    }
   };
 
   const updateClasses = (newClasses: ClassSession[]) => {
     setClasses(newClasses);
     saveClasses(newClasses);
+    if (!isSyncingFromCloud.current) {
+      saveClassesBatchToCloud(newClasses);
+    }
   };
 
   const updateGrades = (newGrades: Record<string, StudentGrade>) => {
     setGrades(newGrades);
     saveGrades(newGrades);
+    if (!isSyncingFromCloud.current) {
+      saveGradesBatchToCloud(newGrades);
+    }
   };
 
   // Login & Logout
@@ -175,12 +273,40 @@ export default function App() {
     updateStudents(updated);
   };
 
-  const handleImportStudents = (imported: Student[]) => {
-    // Append unique students
+  const handleImportComplete = (result: ImportResult) => {
+    // 1. Update students: merge and deduplicate
     const existingIds = new Set(students.map((s) => s.registrationId));
-    const newUnique = imported.filter((imp) => !imp.registrationId || !existingIds.has(imp.registrationId));
-    const merged = [...students, ...newUnique];
-    updateStudents(merged);
+    const newUnique = result.students.filter((imp) => !imp.registrationId || !existingIds.has(imp.registrationId));
+    const mergedStudents = [...students, ...newUnique];
+    updateStudents(mergedStudents);
+
+    // 2. Update classes: if imported classes exist, merge by classNumber
+    if (result.classes.length > 0) {
+      const classMap = new Map<number, ClassSession>();
+      // Base on existing classes
+      classes.forEach((c) => classMap.set(c.classNumber, { ...c, records: { ...c.records } }));
+      // Overlay imported classes
+      result.classes.forEach((c) => {
+        const existing = classMap.get(c.classNumber);
+        if (existing) {
+          classMap.set(c.classNumber, {
+            ...existing,
+            ...c,
+            records: { ...existing.records, ...c.records },
+          });
+        } else {
+          classMap.set(c.classNumber, c);
+        }
+      });
+      const sortedClasses = Array.from(classMap.values()).sort((a, b) => a.classNumber - b.classNumber);
+      updateClasses(sortedClasses);
+    }
+
+    // 3. Update grades
+    if (result.importedGradesCount > 0) {
+      const mergedGrades = { ...grades, ...result.grades };
+      updateGrades(mergedGrades);
+    }
   };
 
   // Class History Actions
@@ -224,7 +350,7 @@ export default function App() {
 
   // Export directly
   const handleExportExcel = () => {
-    exportToExcel(students, classes, 'Consultoria Organizacional');
+    exportToExcel(students, classes, 'Consultoria Organizacional', grades);
   };
 
   // Clear/Reset all data
@@ -239,6 +365,7 @@ export default function App() {
     setSelectedStudentForQuery(null);
     setEditingClassId(null);
     setIsResetConfirmOpen(false);
+    clearAllCloudData();
   };
 
   // When no user is logged in, show the Login Screen directly
@@ -271,6 +398,7 @@ export default function App() {
         onOpenImportModal={() => setIsExcelModalOpen(true)}
         onResetData={handleResetData}
         onLogout={handleLogout}
+        isCloudSynced={isCloudSynced}
       />
 
       {/* Main Container */}
@@ -403,7 +531,8 @@ export default function App() {
         onClose={() => setIsExcelModalOpen(false)}
         students={students}
         classes={classes}
-        onImportStudents={handleImportStudents}
+        grades={grades}
+        onImportComplete={handleImportComplete}
       />
 
       {/* Reset All Data Modal */}

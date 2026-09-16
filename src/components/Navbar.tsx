@@ -13,7 +13,9 @@ import {
   LogOut,
   PlusCircle,
   UserCheck,
-  Award
+  Award,
+  CloudCheck,
+  Cloud
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -24,6 +26,7 @@ interface NavbarProps {
   onOpenImportModal: () => void;
   onResetData: () => void;
   onLogout: () => void;
+  isCloudSynced?: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -34,6 +37,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenImportModal,
   onResetData,
   onLogout,
+  isCloudSynced = false,
 }) => {
   const isProfessor = currentUser?.role === 'Professor';
   const isAluno = currentUser?.role === 'Aluno';
@@ -67,6 +71,16 @@ export const Navbar: React.FC<NavbarProps> = ({
                     </span>
                   </span>
                 )}
+
+                {/* Cloud Database Connected Badge */}
+                <span
+                  id="cloud-db-badge"
+                  className="text-[11px] font-semibold px-2.5 py-1 rounded-full border flex items-center gap-1.5 bg-sky-500/10 text-sky-300 border-sky-500/30 shadow-xs"
+                  title="Conectado ao Banco de Dados na Nuvem (Firebase Firestore). Dados protegidos e sincronizados."
+                >
+                  <Cloud className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Nuvem Ativa</span>
+                </span>
               </div>
               <p className="text-xs text-slate-400">Sistema de Chamada e Gestão de Frequência de Alunos</p>
             </div>

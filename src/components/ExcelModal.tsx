@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Student, ClassSession } from '../types';
-import { exportToExcel, downloadExcelTemplate, importStudentsFromExcel } from '../utils/excelUtils';
+import { Student, ClassSession, StudentGrade } from '../types';
+import { exportToExcel, downloadExcelTemplate, importFromExcel, ImportResult } from '../utils/excelUtils';
 import {
   FileSpreadsheet,
   Download,
@@ -9,7 +9,10 @@ import {
   FileCheck,
   AlertCircle,
   HelpCircle,
-  Check
+  Check,
+  Sparkles,
+  Layers,
+  GraduationCap
 } from 'lucide-react';
 
 interface ExcelModalProps {
@@ -17,7 +20,8 @@ interface ExcelModalProps {
   onClose: () => void;
   students: Student[];
   classes: ClassSession[];
-  onImportStudents: (imported: Student[]) => void;
+  grades: Record<string, StudentGrade>;
+  onImportComplete: (result: ImportResult) => void;
 }
 
 export const ExcelModal: React.FC<ExcelModalProps> = ({
@@ -25,7 +29,8 @@ export const ExcelModal: React.FC<ExcelModalProps> = ({
   onClose,
   students,
   classes,
-  onImportStudents,
+  grades,
+  onImportComplete,
 }) => {
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
@@ -35,9 +40,9 @@ export const ExcelModal: React.FC<ExcelModalProps> = ({
   if (!isOpen) return null;
 
   const handleExport = () => {
-    exportToExcel(students, classes, 'Consultoria Organizacional');
-    setSuccessMessage('Planilha Excel (.xlsx) gerada e baixada com sucesso!');
-    setTimeout(() => setSuccessMessage(null), 4000);
+    exportToExcel(students, classes, 'Consultoria Organizacional', grades);
+    setSuccessMessage('Planilha Excel (.xlsx) completa com Matriz de Chamada, Boletim de Notas e Histórico gerada com sucesso!');
+    setTimeout(() => setSuccessMessage(null), 5000);
   };
 
   const handleDownloadTemplate = () => {
@@ -62,21 +67,27 @@ export const ExcelModal: React.FC<ExcelModalProps> = ({
     setErrorMessage(null);
 
     try {
-      const importedStudents = await importStudentsFromExcel(file);
-      if (importedStudents.length === 0) {
-        setErrorMessage('Nenhum aluno válido encontrado na planilha. Verifique o modelo.');
+      const result = await importFromExcel(file, students, classes, grades);
+      if (result.students.length === 0) {
+        setErrorMessage('Nenhum aluno válido encontrado na planilha. Verifique as colunas do arquivo.');
       } else {
-        onImportStudents(importedStudents);
-        setSuccessMessage(`${importedStudents.length} alunos importados com sucesso!`);
+        onImportComplete(result);
+        const details = [
+          `${result.students.length} alunos`,
+          result.importedClassesCount > 0 ? `${result.importedClassesCount} aulas com presenças/faltas` : null,
+          result.importedGradesCount > 0 ? `${result.importedGradesCount} registros de notas` : null,
+        ].filter(Boolean).join(', ');
+
+        setSuccessMessage(`Importação completa realizada com sucesso! (${details})`);
         setFile(null);
         setTimeout(() => {
           setSuccessMessage(null);
           onClose();
-        }, 2000);
+        }, 2500);
       }
     } catch (err) {
       console.error(err);
-      setErrorMessage('Erro ao ler a planilha Excel. Verifique se o formato do arquivo é válido.');
+      setErrorMessage('Erro ao ler a planilha Excel. Certifique-se de que o arquivo é uma planilha (.xlsx ou .xls) válida.');
     } finally {
       setLoading(false);
     }
@@ -131,7 +142,7 @@ export const ExcelModal: React.FC<ExcelModalProps> = ({
                 <span>Exportar Dados Atuais para Excel (.xlsx)</span>
               </h4>
               <p className="text-xs text-slate-400 mt-1">
-                Gera uma pasta de trabalho Excel com 3 abas: <strong>Matriz de Chamada (P/A/J)</strong>, <strong>Resumo de Alunos</strong> e <strong>Histórico de Aulas</strong>.
+                Gera uma pasta de trabalho Excel completa com 4 abas: <strong>Matriz de Chamada (todas as aulas P/A/J)</strong>, <strong>Boletim de Notas</strong>, <strong>Resumo de Alunos</strong> e <strong>Histórico de Aulas</strong>.
               </p>
             </div>
             <button
@@ -144,13 +155,13 @@ export const ExcelModal: React.FC<ExcelModalProps> = ({
           </div>
         </div>
 
-        {/* Section 2: Import Students from Excel */}
+        {/* Section 2: Import Students, Attendance and Grades from Excel */}
         <form onSubmit={handleImportSubmit} className="space-y-4">
           <div className="border border-slate-800 rounded-xl p-4 space-y-3 bg-slate-800/40">
             <div className="flex items-center justify-between">
               <h4 className="font-bold text-slate-100 text-sm flex items-center gap-1.5">
                 <Upload className="w-4 h-4 text-indigo-400" />
-                <span>Importar Lista de Alunos via Excel</span>
+                <span>Importar Dados Completos via Excel</span>
               </h4>
 
               <button
@@ -164,7 +175,7 @@ export const ExcelModal: React.FC<ExcelModalProps> = ({
             </div>
 
             <p className="text-xs text-slate-400">
-              Selecione uma planilha contendo as colunas: <strong>Matrícula</strong>, <strong>Nome do Aluno</strong> e <strong>Email</strong>.
+              Aceita tanto a <strong>planilha completa exportada pelo sistema</strong> (restaura alunos, todas as aulas, chamadas e boletim de notas) quanto uma <strong>lista básica</strong> com Matrícula, Nome e Email.
             </p>
 
             <div className="border-2 border-dashed border-slate-700 hover:border-indigo-500 bg-slate-800/60 rounded-xl p-4 text-center">
@@ -190,7 +201,7 @@ export const ExcelModal: React.FC<ExcelModalProps> = ({
                 id="modal-import-submit-btn"
                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-xs transition-colors cursor-pointer"
               >
-                {loading ? 'Importando...' : 'Carregar e Importar Alunos'}
+                {loading ? 'Importando e Processando...' : 'Carregar e Importar Dados'}
               </button>
             </div>
           </div>

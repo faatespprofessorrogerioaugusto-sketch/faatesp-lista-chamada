@@ -3,6 +3,7 @@
   "appId": "1:725313578339:web:239b1c0317f9e4386d1f56",
   "apiKey": "AIzaSyBbVmpKyetoHgCZYq1Esi-BMtauWsakY_c",
   "authDomain": "healthy-skein-c5fd2.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-chamadaconsultor-02fa1048-edf6-4ec0-af0c-21e9ffa9812c",
   "storageBucket": "healthy-skein-c5fd2.firebasestorage.app",
   "messagingSenderId": "725313578339",
   "measurementId": "",

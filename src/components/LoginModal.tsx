@@ -152,9 +152,14 @@ export const LoginModal: React.FC<LoginModalProps> = ({ students, onLogin }) => 
           <div className="inline-flex items-center justify-center bg-indigo-600/20 border border-indigo-500/30 text-indigo-400 p-3.5 rounded-2xl mb-1 shadow-inner">
             <GraduationCap className="w-8 h-8" />
           </div>
-          <h2 className="text-lg sm:text-xl font-black text-white tracking-tight whitespace-nowrap">
-            Disciplina: Consultoria Organizacional
-          </h2>
+          <div className="flex items-center justify-center gap-2 flex-wrap">
+            <h2 className="text-lg sm:text-xl font-black text-white tracking-tight whitespace-nowrap">
+              Disciplina: Consultoria Organizacional
+            </h2>
+            <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full border bg-sky-500/10 text-sky-300 border-sky-500/30">
+              Nuvem Firestore Ativa
+            </span>
+          </div>
           <p className="text-xs text-slate-400 font-medium">
             Sistema de Chamada e Gestão de Frequência • Acesso Obrigatório
           </p>

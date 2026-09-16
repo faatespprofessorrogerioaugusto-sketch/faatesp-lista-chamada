@@ -1,0 +1,66 @@
+{
+  "entities": {
+    "Student": {
+      "title": "Student",
+      "description": "Student enrolled in the Consultoria Organizacional course",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string", "maxLength": 200 },
+        "email": { "type": "string", "maxLength": 200 },
+        "registrationId": { "type": "string", "maxLength": 50 },
+        "notes": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "name"]
+    },
+    "ClassSession": {
+      "title": "ClassSession",
+      "description": "Session of class with attendance records",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "classNumber": { "type": "number" },
+        "date": { "type": "string", "maxLength": 20 },
+        "startTime": { "type": "string", "maxLength": 10 },
+        "endTime": { "type": "string", "maxLength": 10 },
+        "topic": { "type": "string", "maxLength": 300 },
+        "instructor": { "type": "string", "maxLength": 200 },
+        "records": { "type": "object" },
+        "recordNotes": { "type": "object" },
+        "isClosed": { "type": "boolean" },
+        "createdAt": { "type": "string", "maxLength": 50 },
+        "updatedAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "classNumber", "date", "topic", "records"]
+    },
+    "StudentGrade": {
+      "title": "StudentGrade",
+      "description": "Grades for activities and exams",
+      "type": "object",
+      "properties": {
+        "studentId": { "type": "string" },
+        "activityN1": { "type": "number" },
+        "examN1": { "type": "number" },
+        "activityN2": { "type": "number" },
+        "examN2": { "type": "number" },
+        "updatedAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["studentId"]
+    }
+  },
+  "firestore": {
+    "/students/{studentId}": {
+      "schema": "Student",
+      "description": "Collection of students enrolled in the course"
+    },
+    "/classes/{classId}": {
+      "schema": "ClassSession",
+      "description": "Collection of class sessions with attendance records"
+    },
+    "/grades/{studentId}": {
+      "schema": "StudentGrade",
+      "description": "Grades recorded per student"
+    }
+  }
+}

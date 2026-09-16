@@ -1,0 +1,44 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper checks
+    function isValidStudent(data) {
+      return data.id is string &&
+             data.name is string &&
+             data.name.size() > 0 &&
+             data.name.size() <= 200;
+    }
+
+    function isValidClassSession(data) {
+      return data.id is string &&
+             data.classNumber is number &&
+             data.date is string &&
+             data.topic is string &&
+             data.topic.size() <= 300 &&
+             data.records is map;
+    }
+
+    function isValidStudentGrade(data) {
+      return data.studentId is string;
+    }
+
+    // Public / App data collections for Consultoria Organizacional course
+    match /students/{studentId} {
+      allow read: if true;
+      allow write: if isValidStudent(request.resource.data);
+      allow delete: if true;
+    }
+
+    match /classes/{classId} {
+      allow read: if true;
+      allow write: if isValidClassSession(request.resource.data);
+      allow delete: if true;
+    }
+
+    match /grades/{studentId} {
+      allow read: if true;
+      allow write: if isValidStudentGrade(request.resource.data);
+      allow delete: if true;
+    }
+  }
+}
