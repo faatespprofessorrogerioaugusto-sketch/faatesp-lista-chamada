@@ -38,7 +38,15 @@ export default function App() {
   const [students, setStudents] = useState<Student[]>([]);
   const [classes, setClasses] = useState<ClassSession[]>([]);
   const [grades, setGrades] = useState<Record<string, StudentGrade>>({});
-  const [currentUser, setCurrentUser] = useState<UserSession | null>(null);
+  const [currentUser, setCurrentUser] = useState<UserSession | null>(() => {
+    try {
+      const saved = localStorage.getItem('consultoria_user_v1');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error('Error loading initial user session:', e);
+    }
+    return null;
+  });
   const [activeTab, setActiveTab] = useState<AppTab>('dashboard');
   const [isCloudSynced, setIsCloudSynced] = useState(false);
 

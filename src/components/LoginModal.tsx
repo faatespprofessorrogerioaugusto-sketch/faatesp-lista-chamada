@@ -59,13 +59,17 @@ export const LoginModal: React.FC<LoginModalProps> = ({ students, onLogin, onOpe
 
     // Normalize name for professor comparison
     const normalizedFullName = normalizeString(formattedName);
-    const isAuthorizedProfessor = normalizedFullName === 'rogerio augusto fernandes';
+    const isAuthorizedProfessor =
+      normalizedFullName === 'rogerio augusto fernandes' ||
+      normalizedFullName === 'rogerio augusto' ||
+      normalizedFullName.includes('rogerio augusto') ||
+      normalizedFullName.includes('mister roger');
 
     // Role validation check
     if (role === 'Professor') {
       if (!isAuthorizedProfessor) {
         setErrorMessage(
-          'Área Proibida, somente os Professores tem acesso! Entre no sistema com o Perfil de Aluno!'
+          'Área Proibida, somente os Professores têm acesso! Entre no sistema com o Perfil de Aluno!'
         );
         return;
       }
@@ -207,33 +211,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({ students, onLogin, onOpe
             />
           </div>
 
-          {/* E-mail (Obrigatório para o Aluno) */}
-          <div>
-            <label htmlFor="login-email-input" className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
-              E-mail {role === 'Aluno' && <span className="text-rose-400">*</span>}
-            </label>
-            <input
-              type="search"
-              id="login-email-input"
-              name={`user_contact_${Date.now()}`}
-              inputMode="email"
-              required={role === 'Aluno'}
-              autoComplete="one-time-code"
-              autoCorrect="off"
-              autoCapitalize="none"
-              spellCheck={false}
-              data-lpignore="true"
-              data-1p-ignore="true"
-              data-form-type="other"
-              data-bwignore="true"
-              value={email}
-              onChange={handleEmailChange}
-              onFocus={(e) => e.target.setAttribute('autocomplete', 'one-time-code')}
-              placeholder="seu.email@exemplo.com"
-              className="w-full px-4 py-3 bg-slate-800 border border-slate-700 text-slate-100 font-medium rounded-xl focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 lowercase placeholder:text-slate-500 placeholder:normal-case text-sm transition-all [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden"
-            />
-          </div>
-
           {/* Tipo de Usuário (Perfil) */}
           <div>
             <label htmlFor="login-role-select" className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
@@ -253,13 +230,42 @@ export const LoginModal: React.FC<LoginModalProps> = ({ students, onLogin, onOpe
             </select>
           </div>
 
+          {/* E-mail (Exibido apenas para Aluno) */}
+          {role === 'Aluno' && (
+            <div>
+              <label htmlFor="login-email-input" className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
+                E-mail do Aluno <span className="text-rose-400">*</span>
+              </label>
+              <input
+                type="search"
+                id="login-email-input"
+                name={`user_contact_${Date.now()}`}
+                inputMode="email"
+                required
+                autoComplete="one-time-code"
+                autoCorrect="off"
+                autoCapitalize="none"
+                spellCheck={false}
+                data-lpignore="true"
+                data-1p-ignore="true"
+                data-form-type="other"
+                data-bwignore="true"
+                value={email}
+                onChange={handleEmailChange}
+                onFocus={(e) => e.target.setAttribute('autocomplete', 'one-time-code')}
+                placeholder="seu.email@exemplo.com"
+                className="w-full px-4 py-3 bg-slate-800 border border-slate-700 text-slate-100 font-medium rounded-xl focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 lowercase placeholder:text-slate-500 placeholder:normal-case text-sm transition-all [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden"
+              />
+            </div>
+          )}
+
           {/* Info Card according to selected role */}
           <div className="p-3.5 bg-slate-800/60 rounded-xl border border-slate-700/60 text-xs text-slate-400 flex items-start gap-2.5">
             {role === 'Professor' ? (
               <>
                 <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                 <span>
-                  Área restrita e protegida para o <strong>Corpo Docente</strong>.
+                  Área restrita e protegida para o <strong>Corpo Docente</strong> (Professor Rogério Augusto).
                 </span>
               </>
             ) : (
@@ -282,17 +288,20 @@ export const LoginModal: React.FC<LoginModalProps> = ({ students, onLogin, onOpe
             <span>Entrar no Sistema</span>
           </button>
 
-          {onOpenImportModal && (
-            <div className="pt-2 border-t border-slate-800 text-center">
-              <button
-                type="button"
-                onClick={onOpenImportModal}
-                id="login-import-excel-btn"
-                className="inline-flex items-center gap-2 text-xs font-semibold text-emerald-400 hover:text-emerald-300 py-1.5 px-3 rounded-lg hover:bg-emerald-950/30 transition-colors cursor-pointer"
-              >
-                <Upload className="w-3.5 h-3.5" />
-                <span>Restaurar / Importar Planilha Excel (.xlsx) para a Nuvem</span>
-              </button>
+          {/* Controls visible ONLY when the user explicitly chooses 'Professor' */}
+          {role === 'Professor' && (
+            <div className="pt-3 border-t border-slate-800 flex flex-col gap-2 animate-fade-in">
+              {onOpenImportModal && (
+                <button
+                  type="button"
+                  onClick={onOpenImportModal}
+                  id="login-import-excel-btn"
+                  className="w-full py-2.5 bg-emerald-950/60 hover:bg-emerald-900/60 text-emerald-200 border border-emerald-800/80 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                >
+                  <Upload className="w-4 h-4 text-emerald-400" />
+                  <span>Restaurar Planilha Excel (.xlsx) para o Banco na Nuvem</span>
+                </button>
+              )}
             </div>
           )}
         </form>
