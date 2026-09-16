@@ -108,12 +108,10 @@ export default function App() {
 
         // Set up real-time snapshot listeners
         unsubscribeStudents = subscribeToStudents((newSt) => {
-          if (newSt.length > 0) {
-            isSyncingFromCloud.current = true;
-            setStudents(newSt);
-            saveStudents(newSt);
-            setTimeout(() => { isSyncingFromCloud.current = false; }, 200);
-          }
+          isSyncingFromCloud.current = true;
+          setStudents(newSt);
+          saveStudents(newSt);
+          setTimeout(() => { isSyncingFromCloud.current = false; }, 200);
         });
 
         unsubscribeClasses = subscribeToClasses((newCl) => {
@@ -126,12 +124,10 @@ export default function App() {
         });
 
         unsubscribeGrades = subscribeToGrades((newGr) => {
-          if (Object.keys(newGr).length > 0) {
-            isSyncingFromCloud.current = true;
-            setGrades(newGr);
-            saveGrades(newGr);
-            setTimeout(() => { isSyncingFromCloud.current = false; }, 200);
-          }
+          isSyncingFromCloud.current = true;
+          setGrades(newGr);
+          saveGrades(newGr);
+          setTimeout(() => { isSyncingFromCloud.current = false; }, 200);
         });
 
       } catch (err) {
@@ -377,6 +373,17 @@ export default function App() {
           onLogin={(session, updatedSt) => {
             handleLogin(session, updatedSt);
           }}
+          onOpenImportModal={() => setIsExcelModalOpen(true)}
+        />
+
+        {/* Excel Modal accessible even before login to restore database */}
+        <ExcelModal
+          isOpen={isExcelModalOpen}
+          onClose={() => setIsExcelModalOpen(false)}
+          students={students}
+          classes={classes}
+          grades={grades}
+          onImportComplete={handleImportComplete}
         />
       </div>
     );

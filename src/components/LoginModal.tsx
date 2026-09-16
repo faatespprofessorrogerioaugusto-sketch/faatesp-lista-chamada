@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
 import { UserSession, Student, UserRole } from '../types';
-import { LogIn, GraduationCap, ShieldAlert, UserCheck, AlertCircle } from 'lucide-react';
+import { LogIn, GraduationCap, ShieldAlert, UserCheck, AlertCircle, Upload } from 'lucide-react';
 import { formatToTitleCase, normalizeString } from '../utils/formatters';
 
 interface LoginModalProps {
   students: Student[];
   onLogin: (session: UserSession, updatedStudents?: Student[]) => void;
+  onOpenImportModal?: () => void;
 }
 
-export const LoginModal: React.FC<LoginModalProps> = ({ students, onLogin }) => {
+export const LoginModal: React.FC<LoginModalProps> = ({ students, onLogin, onOpenImportModal }) => {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<UserRole>('Aluno');
@@ -280,6 +281,20 @@ export const LoginModal: React.FC<LoginModalProps> = ({ students, onLogin }) => 
             <LogIn className="w-4 h-4" />
             <span>Entrar no Sistema</span>
           </button>
+
+          {onOpenImportModal && (
+            <div className="pt-2 border-t border-slate-800 text-center">
+              <button
+                type="button"
+                onClick={onOpenImportModal}
+                id="login-import-excel-btn"
+                className="inline-flex items-center gap-2 text-xs font-semibold text-emerald-400 hover:text-emerald-300 py-1.5 px-3 rounded-lg hover:bg-emerald-950/30 transition-colors cursor-pointer"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>Restaurar / Importar Planilha Excel (.xlsx) para a Nuvem</span>
+              </button>
+            </div>
+          )}
         </form>
       </div>
     </div>
