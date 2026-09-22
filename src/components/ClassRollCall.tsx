@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Student, ClassSession, AttendanceStatus, StudentLoginRecord } from '../types';
 import { loadStudentLogins, loadClasses, recordStudentLogin } from '../utils/storage';
 import { normalizeString } from '../utils/formatters';
@@ -56,8 +56,9 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
   const [recordNotes, setRecordNotes] = useState<Record<string, string>>({});
 
   // Tab View for Roll Call: 'present' is default so the list is empty until students check in
-  const [listFilterTab, setListFilterTab] = useState<'present' | 'pending' | 'absent'>('present');
+  const [listFilterTab, setListFilterTab] = useState<'present' | 'pending' | 'absent' | 'justified'>('present');
   const [searchRosterTerm, setSearchRosterTerm] = useState<string>('');
+  const prevClassIdRef = useRef<string>(selectedClassId);
 
   // Student Logins Tracking & Confrontation
   const [studentLogins, setStudentLogins] = useState<Record<string, StudentLoginRecord>>({});
@@ -73,6 +74,45 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
 
+  // Immediate Session Persistence Helper to prevent state reverts
+  const persistSessionRecords = (
+    newRecords: Record<string, AttendanceStatus>,
+    newNotes?: Record<string, string>,
+    feedback?: string
+  ) => {
+    const existingClass = sortedClasses.find((c) => c.id === selectedClassId || c.classNumber === Number(classNumber));
+    const targetId = existingClass ? existingClass.id : (selectedClassId !== 'new' ? selectedClassId : `class-${Date.now()}`);
+
+    const newSession: ClassSession = {
+      id: targetId,
+      classNumber: Number(classNumber),
+      date,
+      startTime,
+      endTime,
+      durationMinutes,
+      minRequiredMinutes,
+      topic: topic.trim() || getDefaultTopicForClass(Number(classNumber)),
+      description: description.trim() || `Registro de presença da Aula #${classNumber}.`,
+      instructor: instructor.trim() || 'Professor Rogério Augusto Fernandes',
+      records: newRecords,
+      recordNotes: newNotes !== undefined ? newNotes : recordNotes,
+      isClosed: existingClass?.isClosed || false,
+      createdAt: existingClass?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (selectedClassId === 'new') {
+      setSelectedClassId(targetId);
+    }
+
+    onSaveClass(newSession);
+
+    if (feedback) {
+      setConfrontFeedback(feedback);
+      setTimeout(() => setConfrontFeedback(null), 4500);
+    }
+  };
+
   // Load student logins and sync in real-time
   const syncLogins = () => {
     const logins = loadStudentLogins();
@@ -80,7 +120,7 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
     return logins;
   };
 
-  // 100% Automatic real-time background synchronization (no buttons needed)
+  // 100% Automatic real-time background synchronization (detects new student check-ins)
   useEffect(() => {
     const doAutoSync = () => {
       const currentLogins = loadStudentLogins();
@@ -91,20 +131,10 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
 
       setStudentLogins(currentLogins);
 
-      // Only synchronize records from storage or newly logged in students; do NOT force absent status
+      // Only check for new student logins in real time; NEVER overwrite teacher manual changes
       setRecords((prev) => {
         let changed = false;
         const updated = { ...prev };
-
-        // Pull stored records
-        if (currentClassInStorage?.records) {
-          Object.entries(currentClassInStorage.records).forEach(([id, status]) => {
-            if (updated[id] !== status) {
-              updated[id] = status;
-              changed = true;
-            }
-          });
-        }
 
         // Real-time check: if student logged in and this class is open, record their presence
         students.forEach((s) => {
@@ -122,6 +152,10 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
             }
           }
         });
+
+        if (changed) {
+          persistSessionRecords(updated);
+        }
 
         return changed ? updated : prev;
       });
@@ -185,8 +219,11 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
     }
   }, [editingClassId]);
 
-  // Load session data whenever selectedClassId or sortedClasses change
+  // Load session data whenever selectedClassId changes
   useEffect(() => {
+    const isNewClassSelected = prevClassIdRef.current !== selectedClassId;
+    prevClassIdRef.current = selectedClassId;
+
     const currentLogins = loadStudentLogins();
     setStudentLogins(currentLogins);
 
@@ -204,7 +241,9 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
       // DO NOT pre-fill student list! Starts empty, populated only as students register presence
       setRecords({});
       setRecordNotes({});
-      setListFilterTab('present');
+      if (isNewClassSelected) {
+        setListFilterTab('present');
+      }
       return;
     }
 
@@ -220,12 +259,14 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
       setDescription(targetClass.description || '');
       setInstructor(targetClass.instructor || 'Professor Rogério Augusto Fernandes');
 
-      // Only load records explicitly registered for this class
-      setRecords(targetClass.records || {});
-      setRecordNotes(targetClass.recordNotes || {});
-      setListFilterTab('present');
+      // Only re-initialize records and tab when navigating to a different class
+      if (isNewClassSelected) {
+        setRecords(targetClass.records || {});
+        setRecordNotes(targetClass.recordNotes || {});
+        setListFilterTab('present');
+      }
     }
-  }, [selectedClassId, existingClasses, students]);
+  }, [selectedClassId]);
 
   // Check for duplicate date/class number
   useEffect(() => {
@@ -252,12 +293,22 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
     }
   }, [classNumber, date, sortedClasses, selectedClassId]);
 
-  const handleStatusChange = (studentId: string, status: AttendanceStatus) => {
-    setRecords((prev) => ({ ...prev, [studentId]: status }));
+  const handleStatusChange = (studentId: string, status: AttendanceStatus, note?: string) => {
+    const student = students.find((s) => s.id === studentId);
+    const updated = { ...records, [studentId]: status };
+    const updatedNotes = note !== undefined ? { ...recordNotes, [studentId]: note } : recordNotes;
+    setRecords(updated);
+    if (note !== undefined) {
+      setRecordNotes(updatedNotes);
+    }
+    const label = status === 'present' ? 'Presença confirmada' : status === 'justified' ? 'Falta justificada' : 'Falta registrada';
+    persistSessionRecords(updated, updatedNotes, `✓ ${label} para ${student?.name || 'aluno'}!`);
   };
 
   const handleNoteChange = (studentId: string, note: string) => {
-    setRecordNotes((prev) => ({ ...prev, [studentId]: note }));
+    const updatedNotes = { ...recordNotes, [studentId]: note };
+    setRecordNotes(updatedNotes);
+    persistSessionRecords(records, updatedNotes);
   };
 
   const handleMarkAll = (status: AttendanceStatus) => {
@@ -485,15 +536,18 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
 
   // Individual Student Manual Actions
   const handleMarkStudentPresent = (studentId: string) => {
-    setRecords((prev) => ({ ...prev, [studentId]: 'present' }));
+    const student = students.find((s) => s.id === studentId);
+    const updated = { ...records, [studentId]: 'present' as AttendanceStatus };
+    setRecords(updated);
+    persistSessionRecords(updated, undefined, `✓ Presença confirmada para ${student?.name || 'aluno'}!`);
   };
 
   const handleRemovePresence = (studentId: string) => {
-    setRecords((prev) => {
-      const copy = { ...prev };
-      delete copy[studentId];
-      return copy;
-    });
+    const student = students.find((s) => s.id === studentId);
+    const updated = { ...records };
+    delete updated[studentId];
+    setRecords(updated);
+    persistSessionRecords(updated, undefined, `Presença de ${student?.name || 'aluno'} removida (aguardando check-in).`);
   };
 
   // Live counts based on registered records
@@ -1037,8 +1091,8 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
                 <span>Aguardando Check-in ({pendingCount})</span>
               </button>
 
-              {/* Tab 3: Faltas Gravadas (if any) */}
-              {absentCount > 0 && (
+              {/* Tab 3: Faltas Gravadas (if any or active) */}
+              {(absentCount > 0 || listFilterTab === 'absent') && (
                 <button
                   type="button"
                   onClick={() => setListFilterTab('absent')}
@@ -1051,6 +1105,23 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
                 >
                   <UserX className="w-3.5 h-3.5 text-rose-300" />
                   <span>Faltas Gravadas ({absentCount})</span>
+                </button>
+              )}
+
+              {/* Tab 4: Faltas Justificadas (if any or active) */}
+              {(justifiedCount > 0 || listFilterTab === 'justified') && (
+                <button
+                  type="button"
+                  onClick={() => setListFilterTab('justified')}
+                  id="filter-tab-justified"
+                  className={`px-3.5 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+                    listFilterTab === 'justified'
+                      ? 'bg-amber-600 text-white shadow-md shadow-amber-600/30 ring-2 ring-amber-400/40'
+                      : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
+                  }`}
+                >
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Faltas Justificadas ({justifiedCount})</span>
                 </button>
               )}
             </div>
@@ -1195,7 +1266,7 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
                     </div>
                   ))
               )
-            ) : (
+            ) : listFilterTab === 'absent' ? (
               /* TAB 3: FALTAS GRAVADAS */
               absentCount === 0 ? (
                 <div className="p-8 text-center text-slate-400 text-xs">
@@ -1233,14 +1304,22 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          onClick={() => handleMarkStudentPresent(student.id)}
+                          onClick={() => {
+                            handleMarkStudentPresent(student.id);
+                            if (absentCount <= 1) {
+                              setListFilterTab('present');
+                            }
+                          }}
                           className="px-2.5 py-1 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors cursor-pointer"
                         >
                           Converter em Presente
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleStatusChange(student.id, 'justified')}
+                          onClick={() => {
+                            handleStatusChange(student.id, 'justified');
+                            setListFilterTab('justified');
+                          }}
                           className="px-2.5 py-1 text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-white rounded-lg transition-colors cursor-pointer"
                         >
                           Justificar Falta
@@ -1248,6 +1327,83 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
                       </div>
                     </div>
                   ))
+              )
+            ) : (
+              /* TAB 4: FALTAS JUSTIFICADAS */
+              justifiedCount === 0 ? (
+                <div className="p-8 text-center text-slate-400 text-xs">
+                  Nenhuma falta justificada nesta aula.
+                </div>
+              ) : (
+                justifiedStudents
+                  .filter(
+                    (s) =>
+                      s.name.toLowerCase().includes(searchRosterTerm.toLowerCase()) ||
+                      (s.registrationId && s.registrationId.toLowerCase().includes(searchRosterTerm.toLowerCase()))
+                  )
+                  .map((student, idx) => {
+                    const currentNote = recordNotes[student.id] || '';
+                    return (
+                      <div
+                        key={student.id}
+                        className="p-4 bg-amber-950/15 flex flex-col md:flex-row md:items-center justify-between gap-4"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs font-mono font-bold text-slate-500 w-6 text-right">
+                            {idx + 1}.
+                          </span>
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-semibold text-slate-200 text-sm">{student.name}</span>
+                              <span className="bg-amber-500/10 text-amber-400 border border-amber-500/30 text-[10px] font-semibold px-2 py-0.5 rounded-md flex items-center gap-1">
+                                <AlertCircle className="w-3.5 h-3.5" />
+                                Falta Justificada (J)
+                              </span>
+                            </div>
+                            <div className="text-xs text-slate-500 font-mono">
+                              {student.registrationId ? `Matrícula: ${student.registrationId}` : 'Sem matrícula'}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                          <input
+                            type="text"
+                            placeholder="Motivo / atestado médico..."
+                            value={currentNote}
+                            onChange={(e) => handleNoteChange(student.id, e.target.value)}
+                            className="text-xs px-3 py-1.5 bg-slate-900 border border-amber-500/40 rounded-lg text-slate-200 placeholder-slate-500 focus:ring-2 focus:ring-amber-500 focus:outline-none w-full sm:w-56"
+                          />
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleMarkStudentPresent(student.id);
+                                if (justifiedCount <= 1) {
+                                  setListFilterTab('present');
+                                }
+                              }}
+                              className="px-2.5 py-1 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors cursor-pointer shrink-0"
+                            >
+                              Converter em Presente
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleStatusChange(student.id, 'absent');
+                                if (justifiedCount <= 1) {
+                                  setListFilterTab('absent');
+                                }
+                              }}
+                              className="px-2.5 py-1 text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white rounded-lg transition-colors cursor-pointer shrink-0"
+                            >
+                              Voltar p/ Falta
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
               )
             )}
           </div>
