@@ -102,7 +102,7 @@ export const StudentManager: React.FC<StudentManagerProps> = ({
             <span>Gestão de Alunos</span>
           </h2>
           <p className="text-sm text-slate-400 mt-0.5">
-            Cadastre novos alunos, edite informações ou importe da planilha Excel. Total de {students.length} matriculados.
+            Cadastre novos alunos, edite informações ou importe da planilha Excel • <strong className="text-indigo-300">Sala 03</strong>. Total de {students.length} matriculados.
           </p>
         </div>
 
@@ -135,6 +135,9 @@ export const StudentManager: React.FC<StudentManagerProps> = ({
           </span>
           <span className="text-white font-bold text-sm tracking-wide">
             {currentClassLabel}
+          </span>
+          <span className="text-xs font-bold text-indigo-300 bg-indigo-500/20 border border-indigo-500/40 px-2 py-0.5 rounded-md">
+            Sala 03
           </span>
         </div>
         <div className="text-slate-400 font-mono text-[11px] shrink-0">

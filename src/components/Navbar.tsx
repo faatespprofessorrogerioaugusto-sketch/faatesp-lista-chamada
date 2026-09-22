@@ -55,6 +55,16 @@ export const Navbar: React.FC<NavbarProps> = ({
               <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-xl font-bold tracking-tight text-white">Disciplina: Consultoria Organizacional</h1>
                 
+                {/* Sala 03 Badge */}
+                <span
+                  id="sala-badge"
+                  className="text-xs font-bold px-2.5 py-1 rounded-full border bg-indigo-500/15 text-indigo-300 border-indigo-500/30 flex items-center gap-1.5 shadow-xs"
+                  title="Local da Aula: Sala 03"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
+                  <span>Sala 03</span>
+                </span>
+
                 {/* User Role Badge next to title */}
                 {currentUser && (
                   <span

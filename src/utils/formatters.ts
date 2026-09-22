@@ -72,3 +72,22 @@ export function normalizeString(str: string): string {
     .trim()
     .toLowerCase();
 }
+
+/**
+ * Identifica se um nome ou email pertence ao Professor Rogério Augusto.
+ * Usado para assegurar que o professor NUNCA seja cadastrado ou lançado na chamada dos alunos.
+ */
+export function isProfessorNameOrEmail(name?: string, email?: string): boolean {
+  if (!name && !email) return false;
+  const normName = name ? normalizeString(name) : '';
+  const normEmail = (email || '').trim().toLowerCase();
+
+  return (
+    normName.includes('rogerio augusto') ||
+    normName.includes('mister roger') ||
+    normName === 'professor' ||
+    normName.startsWith('prof.') ||
+    normName.startsWith('prof ') ||
+    normEmail === 'rogerioaugusto@gmail.com'
+  );
+}

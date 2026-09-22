@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Student, ClassSession, AttendanceStatus, StudentLoginRecord } from '../types';
 import { loadStudentLogins, loadClasses, recordStudentLogin } from '../utils/storage';
-import { normalizeString } from '../utils/formatters';
-import { CheckCircle2, XCircle, AlertCircle, Save, Calendar, BookOpen, User, Sparkles, Clock, Check, PlusCircle, Layers, Users, Zap, RefreshCw, Radio, UserCheck, UserX } from 'lucide-react';
+import { normalizeString, isProfessorNameOrEmail } from '../utils/formatters';
+import { CheckCircle2, XCircle, AlertCircle, Save, Calendar, BookOpen, User, Sparkles, Clock, Check, PlusCircle, Layers, Users, Zap, RefreshCw, Radio, UserCheck, UserX, Trash2 } from 'lucide-react';
 
 interface ClassRollCallProps {
   students: Student[];
@@ -22,17 +22,20 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
   // Sort classes by classNumber
   const sortedClasses = [...existingClasses].sort((a, b) => a.classNumber - b.classNumber);
 
-  // Automatically sort students in alphabetical order (A-Z)
-  const sortedStudents = [...students].sort((a, b) =>
-    a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' })
-  );
+  // Automatically sort students in alphabetical order (A-Z), strictly filtering out the professor
+  const sortedStudents = [...students]
+    .filter((s) => !isProfessorNameOrEmail(s.name, s.email))
+    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }));
 
-  // Active selected session ID in view ('new' or specific class id)
+  // Active selected session ID in view ('new' or specific class id) - ALWAYS defaults to the latest class
   const [selectedClassId, setSelectedClassId] = useState<string>(() => {
     if (editingClassId) return editingClassId;
-    if (sortedClasses.length > 0) return sortedClasses[0].id;
+    if (sortedClasses.length > 0) return sortedClasses[sortedClasses.length - 1].id;
     return 'new';
   });
+
+  // Track students manually removed/un-marked by the teacher so auto-sync never re-adds them
+  const manuallyRemovedRef = useRef<Set<string>>(new Set());
 
   // Next available class number
   const nextClassNum = sortedClasses.length > 0
@@ -123,6 +126,13 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
   // 100% Automatic real-time background synchronization (detects new student check-ins)
   useEffect(() => {
     const doAutoSync = () => {
+      // Only auto-add check-ins for the LATEST class, and NEVER into past classes (e.g. Aula #1)
+      const maxExistingNum = sortedClasses.length > 0 ? Math.max(...sortedClasses.map((c) => c.classNumber)) : 1;
+      const isLatestOrNew = Number(classNumber) >= maxExistingNum || selectedClassId === 'new';
+      if (!isLatestOrNew) {
+        return;
+      }
+
       const currentLogins = loadStudentLogins();
       const freshClasses = loadClasses();
       const currentClassInStorage = freshClasses.find(
@@ -137,7 +147,12 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
         const updated = { ...prev };
 
         // Real-time check: if student logged in and this class is open, record their presence
-        students.forEach((s) => {
+        sortedStudents.forEach((s) => {
+          // Never record attendance for the teacher
+          if (isProfessorNameOrEmail(s.name, s.email)) return;
+          // Never re-add students manually removed by the teacher
+          if (manuallyRemovedRef.current.has(s.id)) return;
+
           const directLogin = currentLogins[s.id];
           const sNorm = normalizeString(s.name);
           const nameLogin = Object.values(currentLogins).find(
@@ -247,8 +262,8 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
       return;
     }
 
-    // Load existing class
-    const targetClass = sortedClasses.find((c) => c.id === selectedClassId) || sortedClasses[0];
+    // Load existing class (defaults to latest class)
+    const targetClass = sortedClasses.find((c) => c.id === selectedClassId) || sortedClasses[sortedClasses.length - 1];
     if (targetClass) {
       setClassNumber(targetClass.classNumber);
       setDate(targetClass.date);
@@ -261,12 +276,22 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
 
       // Only re-initialize records and tab when navigating to a different class
       if (isNewClassSelected) {
+        manuallyRemovedRef.current.clear();
         setRecords(targetClass.records || {});
         setRecordNotes(targetClass.recordNotes || {});
         setListFilterTab('present');
       }
     }
   }, [selectedClassId]);
+
+  // Auto-position on latest class if opening without an explicit selection
+  useEffect(() => {
+    if (!editingClassId && sortedClasses.length > 0) {
+      if (selectedClassId === 'new' || !sortedClasses.some((c) => c.id === selectedClassId)) {
+        setSelectedClassId(sortedClasses[sortedClasses.length - 1].id);
+      }
+    }
+  }, [sortedClasses.length, editingClassId]);
 
   // Check for duplicate date/class number
   useEffect(() => {
@@ -294,7 +319,12 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
   }, [classNumber, date, sortedClasses, selectedClassId]);
 
   const handleStatusChange = (studentId: string, status: AttendanceStatus, note?: string) => {
-    const student = students.find((s) => s.id === studentId);
+    const student = sortedStudents.find((s) => s.id === studentId);
+    if (status !== 'present') {
+      manuallyRemovedRef.current.add(studentId);
+    } else {
+      manuallyRemovedRef.current.delete(studentId);
+    }
     const updated = { ...records, [studentId]: status };
     const updatedNotes = note !== undefined ? { ...recordNotes, [studentId]: note } : recordNotes;
     setRecords(updated);
@@ -302,7 +332,7 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
       setRecordNotes(updatedNotes);
     }
     const label = status === 'present' ? 'Presença confirmada' : status === 'justified' ? 'Falta justificada' : 'Falta registrada';
-    persistSessionRecords(updated, updatedNotes, `✓ ${label} para ${student?.name || 'aluno'}!`);
+    persistSessionRecords(updated, updatedNotes, `✓ ${label} para ${student?.name || 'aluno'} na Aula #${classNumber}!`);
   };
 
   const handleNoteChange = (studentId: string, note: string) => {
@@ -536,18 +566,45 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
 
   // Individual Student Manual Actions
   const handleMarkStudentPresent = (studentId: string) => {
-    const student = students.find((s) => s.id === studentId);
+    const student = sortedStudents.find((s) => s.id === studentId);
+    manuallyRemovedRef.current.delete(studentId);
     const updated = { ...records, [studentId]: 'present' as AttendanceStatus };
     setRecords(updated);
-    persistSessionRecords(updated, undefined, `✓ Presença confirmada para ${student?.name || 'aluno'}!`);
+    persistSessionRecords(updated, undefined, `✓ Presença confirmada para ${student?.name || 'aluno'} na Aula #${classNumber}!`);
   };
 
   const handleRemovePresence = (studentId: string) => {
-    const student = students.find((s) => s.id === studentId);
+    const student = sortedStudents.find((s) => s.id === studentId);
+    manuallyRemovedRef.current.add(studentId);
     const updated = { ...records };
     delete updated[studentId];
     setRecords(updated);
-    persistSessionRecords(updated, undefined, `Presença de ${student?.name || 'aluno'} removida (aguardando check-in).`);
+    persistSessionRecords(
+      updated,
+      undefined,
+      `✓ Presença de ${student?.name || 'aluno'} removida da Aula #${classNumber} (retornado para Aguardando Check-in).`
+    );
+  };
+
+  // Bulk remove all presences in the active class session
+  const handleClearAllPresences = () => {
+    if (
+      window.confirm(
+        `Tem certeza que deseja remover TODAS as ${presentCount} presenças da Aula #${classNumber}?\n\nIsso retornará todos os alunos desta aula para o status inicial "Aguardando Check-in".`
+      )
+    ) {
+      sortedStudents.forEach((s) => manuallyRemovedRef.current.add(s.id));
+      const emptyRecs: Record<string, AttendanceStatus> = {};
+      const emptyNotes: Record<string, string> = {};
+      setRecords(emptyRecs);
+      setRecordNotes(emptyNotes);
+      persistSessionRecords(
+        emptyRecs,
+        emptyNotes,
+        `✓ Todas as presenças da Aula #${classNumber} foram limpas com sucesso! Alunos retornados para Aguardando Check-in.`
+      );
+      setListFilterTab('pending');
+    }
   };
 
   // Live counts based on registered records
@@ -698,7 +755,7 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
               {selectedClassId === 'new' ? `Criando Nova Aula #${classNumber}` : `Editando Chamada da Aula #${classNumber}`}
             </span>
             <span className="text-slate-600">•</span>
-            <span className="text-xs text-slate-400 font-medium">Consultoria Organizacional • Data: {formatDateDisplay(date)}</span>
+            <span className="text-xs text-slate-400 font-medium">Consultoria Organizacional • Local: <strong className="text-indigo-300 font-bold">Sala 03</strong> • Data: {formatDateDisplay(date)}</span>
           </div>
           <h2 className="text-xl font-bold text-slate-100 tracking-tight mt-1">
             {selectedClassId === 'new' ? `Lançamento de Chamada - Aula #${classNumber}` : `Aula #${classNumber} - ${topic || 'Consultoria Organizacional'}`}
@@ -773,7 +830,7 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
             </div>
 
             {/* Instructor */}
-            <div className="lg:col-span-2">
+            <div className="lg:col-span-1">
               <label htmlFor="class-instructor-input" className="block text-xs font-semibold text-slate-300 mb-1">
                 Professor
               </label>
@@ -785,6 +842,19 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
                 placeholder="Professor Rogério Augusto Fernandes"
                 className="w-full px-3.5 py-2 text-sm bg-slate-800 border border-slate-700 rounded-xl focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 font-medium text-slate-100 placeholder-slate-500"
               />
+            </div>
+
+            {/* Local do Encontro / Sala 03 */}
+            <div className="lg:col-span-1">
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                Local do Encontro
+              </label>
+              <div className="w-full px-3.5 py-2 text-sm bg-slate-800/80 border border-indigo-500/40 rounded-xl font-bold text-indigo-300 flex items-center justify-between shadow-xs">
+                <span>Sala 03</span>
+                <span className="text-[10px] uppercase font-bold bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded border border-indigo-500/30">
+                  Fixo
+                </span>
+              </div>
             </div>
 
             {/* Topic / Module */}
@@ -1126,15 +1196,30 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
               )}
             </div>
 
-            {/* Quick Search */}
-            <div className="w-full sm:w-64">
-              <input
-                type="text"
-                value={searchRosterTerm}
-                onChange={(e) => setSearchRosterTerm(e.target.value)}
-                placeholder="Filtrar por nome ou matrícula..."
-                className="w-full text-xs px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-xl text-slate-200 placeholder-slate-500 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-              />
+            {/* Actions & Quick Search */}
+            <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap w-full sm:w-auto">
+              {listFilterTab === 'present' && presentCount > 0 && (
+                <button
+                  type="button"
+                  onClick={handleClearAllPresences}
+                  className="px-3 py-1.5 text-xs font-bold bg-rose-950/60 hover:bg-rose-900/80 border border-rose-800/80 text-rose-300 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-xs whitespace-nowrap"
+                  title="Remover todas as presenças desta aula e retornar alunos para Aguardando Check-in"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                  <span>Limpar Presenças desta Aula ({presentCount})</span>
+                </button>
+              )}
+
+              {/* Quick Search */}
+              <div className="w-full sm:w-64">
+                <input
+                  type="text"
+                  value={searchRosterTerm}
+                  onChange={(e) => setSearchRosterTerm(e.target.value)}
+                  placeholder="Filtrar por nome ou matrícula..."
+                  className="w-full text-xs px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-xl text-slate-200 placeholder-slate-500 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                />
+              </div>
             </div>
           </div>
 

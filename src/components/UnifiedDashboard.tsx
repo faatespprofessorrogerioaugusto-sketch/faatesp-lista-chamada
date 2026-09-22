@@ -61,7 +61,7 @@ export const UnifiedDashboard: React.FC<UnifiedDashboardProps> = ({
             <span>Dashboard Unificado de Frequência</span>
           </h2>
           <p className="text-sm text-slate-400 mt-0.5">
-            Visão consolidada do curso de <strong className="text-slate-200">Consultoria Organizacional</strong>
+            Visão consolidada do curso de <strong className="text-slate-200">Consultoria Organizacional</strong> • <strong className="text-indigo-300">Sala 03</strong>
           </p>
         </div>
 

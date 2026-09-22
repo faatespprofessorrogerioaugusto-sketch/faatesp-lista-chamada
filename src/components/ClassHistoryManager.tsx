@@ -30,7 +30,7 @@ export const ClassHistoryManager: React.FC<ClassHistoryManagerProps> = ({
             <span>Aulas Realizadas e Histórico de Registros</span>
           </h2>
           <p className="text-sm text-slate-400 mt-0.5">
-            Gerencie as chamadas de todas as aulas ministradas no curso de Consultoria Organizacional.
+            Gerencie as chamadas de todas as aulas ministradas no curso de Consultoria Organizacional • <strong className="text-indigo-300">Sala 03</strong>.
           </p>
         </div>
 
@@ -84,6 +84,9 @@ export const ClassHistoryManager: React.FC<ClassHistoryManagerProps> = ({
                         • Professor: <strong className="text-slate-300">{cls.instructor}</strong>
                       </span>
                     )}
+                    <span className="text-xs font-bold text-indigo-300 bg-indigo-500/15 border border-indigo-500/30 px-2 py-0.5 rounded-md">
+                      Sala 03
+                    </span>
                   </div>
 
                   <h3 className="font-bold text-slate-100 text-base">{cls.topic}</h3>

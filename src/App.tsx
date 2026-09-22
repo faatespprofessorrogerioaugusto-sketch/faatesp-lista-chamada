@@ -9,7 +9,9 @@ import {
   saveGrades,
   resetToDefaultData,
   recordStudentLogin,
+  loadStudentLogins,
 } from './utils/storage';
+import { isProfessorNameOrEmail } from './utils/formatters';
 import { exportToExcel, ImportResult } from './utils/excelUtils';
 import {
   getStudentsFromCloud,
@@ -102,6 +104,47 @@ export default function App() {
           initialGr = localGrades;
         }
 
+        // Strict professor exclusion: Ensure professor is NEVER stored as a student
+        initialSt = initialSt.filter((s) => !isProfessorNameOrEmail(s.name, s.email));
+
+        // Purge any professor attendance records from classes
+        const validStudentIds = new Set(initialSt.map((s) => s.id));
+        initialCl = initialCl.map((c) => {
+          let recChanged = false;
+          const cleanRecs: Record<string, AttendanceStatus> = {};
+          const cleanNotes: Record<string, string> = {};
+          Object.entries(c.records).forEach(([stId, stVal]) => {
+            if (validStudentIds.has(stId)) {
+              cleanRecs[stId] = stVal;
+            } else {
+              recChanged = true;
+            }
+          });
+          Object.entries(c.recordNotes || {}).forEach(([stId, stNote]) => {
+            if (validStudentIds.has(stId)) {
+              cleanNotes[stId] = stNote;
+            }
+          });
+          return recChanged ? { ...c, records: cleanRecs, recordNotes: cleanNotes } : c;
+        });
+
+        // Purge any accidental professor entries in student logins
+        try {
+          const storedLogins = loadStudentLogins();
+          let loginsChanged = false;
+          Object.keys(storedLogins).forEach((k) => {
+            if (isProfessorNameOrEmail(storedLogins[k]?.studentName)) {
+              delete storedLogins[k];
+              loginsChanged = true;
+            }
+          });
+          if (loginsChanged) {
+            localStorage.setItem('consultoria_student_logins_v1', JSON.stringify(storedLogins));
+          }
+        } catch (e) {
+          // ignore
+        }
+
         // Set state and backup to localStorage
         setStudents(initialSt);
         saveStudents(initialSt);
@@ -117,8 +160,9 @@ export default function App() {
         // Set up real-time snapshot listeners
         unsubscribeStudents = subscribeToStudents((newSt) => {
           isSyncingFromCloud.current = true;
-          setStudents(newSt);
-          saveStudents(newSt);
+          const cleanNewSt = newSt.filter((s) => !isProfessorNameOrEmail(s.name, s.email));
+          setStudents(cleanNewSt);
+          saveStudents(cleanNewSt);
           setTimeout(() => { isSyncingFromCloud.current = false; }, 200);
         });
 
@@ -140,7 +184,7 @@ export default function App() {
 
       } catch (err) {
         console.error('Error connecting to cloud database, using local backup:', err);
-        const fallbackSt = loadStudents();
+        const fallbackSt = loadStudents().filter((s) => !isProfessorNameOrEmail(s.name, s.email));
         const fallbackCl = loadClasses();
         const fallbackGr = loadGrades();
         setStudents(fallbackSt);
@@ -160,18 +204,39 @@ export default function App() {
 
   // Save changes to both local storage AND Firestore Cloud
   const updateStudents = (newStudents: Student[]) => {
-    setStudents(newStudents);
-    saveStudents(newStudents);
+    const clean = newStudents.filter((s) => !isProfessorNameOrEmail(s.name, s.email));
+    setStudents(clean);
+    saveStudents(clean);
     if (!isSyncingFromCloud.current) {
-      saveStudentsBatchToCloud(newStudents);
+      saveStudentsBatchToCloud(clean);
     }
   };
 
   const updateClasses = (newClasses: ClassSession[]) => {
-    setClasses(newClasses);
-    saveClasses(newClasses);
+    // Sanitize classes: remove professor from records
+    const sanitized = newClasses.map((c) => {
+      const cleanRecords = { ...c.records };
+      const cleanNotes = { ...(c.recordNotes || {}) };
+      let changed = false;
+      students.forEach((s) => {
+        if (isProfessorNameOrEmail(s.name, s.email)) {
+          if (cleanRecords[s.id]) {
+            delete cleanRecords[s.id];
+            changed = true;
+          }
+          if (cleanNotes[s.id]) {
+            delete cleanNotes[s.id];
+            changed = true;
+          }
+        }
+      });
+      return changed ? { ...c, records: cleanRecords, recordNotes: cleanNotes } : c;
+    });
+
+    setClasses(sanitized);
+    saveClasses(sanitized);
     if (!isSyncingFromCloud.current) {
-      saveClassesBatchToCloud(newClasses);
+      saveClassesBatchToCloud(sanitized);
     }
   };
 
@@ -195,7 +260,29 @@ export default function App() {
       console.error('Error saving user session:', e);
     }
 
-    if (session.role === 'Aluno') {
+    if (session.role === 'Professor') {
+      // Ensure professor is NEVER registered in student logins or roll call
+      try {
+        const logins = loadStudentLogins();
+        let changed = false;
+        Object.keys(logins).forEach((id) => {
+          if (isProfessorNameOrEmail(logins[id]?.studentName)) {
+            delete logins[id];
+            changed = true;
+          }
+        });
+        if (changed) {
+          localStorage.setItem('consultoria_student_logins_v1', JSON.stringify(logins));
+        }
+      } catch (e) {
+        // ignore
+      }
+      setActiveTab('dashboard');
+      return;
+    }
+
+    // Only genuine students have their login and attendance recorded
+    if (session.role === 'Aluno' && !isProfessorNameOrEmail(session.name)) {
       if (session.studentId) {
         recordStudentLogin(session.studentId, session.name);
 
@@ -222,8 +309,6 @@ export default function App() {
         }
       }
       setActiveTab('roll-call');
-    } else {
-      setActiveTab('dashboard');
     }
   };
 

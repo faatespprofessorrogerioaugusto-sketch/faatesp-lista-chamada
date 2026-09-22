@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Student, ClassSession, AttendanceStatus } from '../types';
+import { isProfessorNameOrEmail } from '../utils/formatters';
 import { Video, Upload, CheckCircle2, XCircle, AlertCircle, FileSpreadsheet, Sparkles, Clock, ShieldCheck, Download, X } from 'lucide-react';
 
 interface GoogleMeetModalProps {
@@ -81,6 +82,11 @@ export const GoogleMeetModal: React.FC<GoogleMeetModalProps> = ({
     const results: MeetParticipantResult[] = [];
 
     rawList.forEach((item) => {
+      // Exclude professor completely from student attendance list
+      if (isProfessorNameOrEmail(item.name, item.email)) {
+        return;
+      }
+
       const cleanName = item.name.trim().toUpperCase();
       let matchedStudent = currentStudents.find(
         (s) => s.name.trim().toUpperCase() === cleanName
