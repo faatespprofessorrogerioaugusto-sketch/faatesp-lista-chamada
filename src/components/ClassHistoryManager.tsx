@@ -72,8 +72,11 @@ export const ClassHistoryManager: React.FC<ClassHistoryManagerProps> = ({
               >
                 <div className="space-y-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 font-bold text-xs px-2.5 py-0.5 rounded-md">
-                      Aula #{cls.classNumber}
+                    <span
+                      translate="no"
+                      className="notranslate bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 font-bold text-xs px-2.5 py-0.5 rounded-md"
+                    >
+                      Aula {cls.classNumber}
                     </span>
                     <span className="text-xs text-slate-400 font-mono flex items-center gap-1">
                       <Calendar className="w-3.5 h-3.5 text-slate-500" />

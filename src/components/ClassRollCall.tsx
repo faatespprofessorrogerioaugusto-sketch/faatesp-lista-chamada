@@ -679,17 +679,18 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
               <button
                 key={cls.id}
                 type="button"
+                translate="no"
                 onClick={() => {
                   setSelectedClassId(cls.id);
                   setSavedSuccess(false);
                 }}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                className={`notranslate px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
                   isSelected
                     ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30 ring-2 ring-indigo-400/50'
                     : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
                 }`}
               >
-                <span>Aula #{cls.classNumber}</span>
+                <span translate="no" className="notranslate">Aula {cls.classNumber}</span>
                 <span className={`text-[11px] font-mono px-1.5 py-0.5 rounded-md ${isSelected ? 'bg-indigo-700 text-indigo-100' : 'bg-slate-900 text-slate-400'}`}>
                   {formatDateDisplay(cls.date)}
                 </span>
@@ -751,14 +752,17 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
       <div className="bg-slate-900/80 p-6 rounded-2xl border border-slate-800 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <span className="bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 text-xs font-bold px-2.5 py-0.5 rounded-md uppercase tracking-wider">
-              {selectedClassId === 'new' ? `Criando Nova Aula #${classNumber}` : `Editando Chamada da Aula #${classNumber}`}
+            <span
+              translate="no"
+              className="notranslate bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 text-xs font-bold px-2.5 py-0.5 rounded-md uppercase tracking-wider"
+            >
+              {selectedClassId === 'new' ? `Criando Nova Aula ${classNumber}` : `Editando Chamada da Aula ${classNumber}`}
             </span>
             <span className="text-slate-600">•</span>
             <span className="text-xs text-slate-400 font-medium">Consultoria Organizacional • Local: <strong className="text-indigo-300 font-bold">Sala 03</strong> • Data: {formatDateDisplay(date)}</span>
           </div>
-          <h2 className="text-xl font-bold text-slate-100 tracking-tight mt-1">
-            {selectedClassId === 'new' ? `Lançamento de Chamada - Aula #${classNumber}` : `Aula #${classNumber} - ${topic || 'Consultoria Organizacional'}`}
+          <h2 translate="no" className="notranslate text-xl font-bold text-slate-100 tracking-tight mt-1">
+            {selectedClassId === 'new' ? `Lançamento de Chamada - Aula ${classNumber}` : `Aula ${classNumber} - ${topic || 'Consultoria Organizacional'}`}
           </h2>
           <p className="text-sm text-slate-400 mt-0.5">
             A lista de presença é preenchida automaticamente conforme cada aluno fizer login no sistema e confirmar presença nesta aula.

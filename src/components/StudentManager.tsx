@@ -133,7 +133,7 @@ export const StudentManager: React.FC<StudentManagerProps> = ({
           <span className="px-2.5 py-1 bg-indigo-950/80 border border-indigo-500/30 text-indigo-300 font-bold rounded-lg uppercase tracking-wide text-[11px]">
             Informação da Disciplina
           </span>
-          <span className="text-white font-bold text-sm tracking-wide">
+          <span translate="no" className="notranslate text-white font-bold text-sm tracking-wide">
             {currentClassLabel} • Sala 03
           </span>
         </div>
