@@ -84,8 +84,8 @@ export const ClassHistoryManager: React.FC<ClassHistoryManagerProps> = ({
                         • Professor: <strong className="text-slate-300">{cls.instructor}</strong>
                       </span>
                     )}
-                    <span className="text-xs font-bold text-indigo-300 bg-indigo-500/15 border border-indigo-500/30 px-2 py-0.5 rounded-md">
-                      Sala 03
+                    <span className="text-xs text-slate-400">
+                      • Local: <strong className="text-indigo-300 font-semibold">Sala 03</strong>
                     </span>
                   </div>
 

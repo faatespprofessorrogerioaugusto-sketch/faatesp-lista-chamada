@@ -844,16 +844,13 @@ export const ClassRollCall: React.FC<ClassRollCallProps> = ({
               />
             </div>
 
-            {/* Local do Encontro / Sala 03 */}
+            {/* Local da Aula / Sala 03 */}
             <div className="lg:col-span-1">
               <label className="block text-xs font-semibold text-slate-300 mb-1">
-                Local do Encontro
+                Local da Aula
               </label>
               <div className="w-full px-3.5 py-2 text-sm bg-slate-800/80 border border-indigo-500/40 rounded-xl font-bold text-indigo-300 flex items-center justify-between shadow-xs">
                 <span>Sala 03</span>
-                <span className="text-[10px] uppercase font-bold bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded border border-indigo-500/30">
-                  Fixo
-                </span>
               </div>
             </div>
 
